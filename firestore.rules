@@ -113,6 +113,47 @@ service cloud.firestore {
       allow delete: if false;
     }
 
+
+    // STAFF ACCOUNT APPLICATIONS
+    match /staffApplications/{applicationId} {
+
+      // Applicants can read their own application.
+      // Active administrators can read applications for review.
+      allow get: if signedIn() && (
+        request.auth.uid == applicationId ||
+        isAdmin()
+      );
+
+      allow list: if isAdmin();
+
+      // Applicants may submit an application for staff access.
+      // This does not grant them any staff privileges.
+      allow create: if signedIn() &&
+        request.auth.uid == applicationId &&
+        request.resource.data.uid == request.auth.uid &&
+        request.resource.data.requestedRole in [
+          "healthWorker",
+          "admin"
+        ] &&
+        request.resource.data.status == "pending" &&
+        request.resource.data.keys().hasOnly([
+          "uid",
+          "fullName",
+          "email",
+          "requestedRole",
+          "facility",
+          "status",
+          "createdAt",
+          "updatedAt"
+        ]) &&
+        request.resource.data.createdAt == request.time &&
+        request.resource.data.updatedAt == request.time;
+
+      // Approval and rejection must happen through trusted backend code.
+      allow update, delete: if false;
+    }
+
+
     // APPOINTMENTS
     match /appointments/{appointmentId} {
 

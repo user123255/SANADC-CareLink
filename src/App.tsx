@@ -7,7 +7,9 @@ import {
   Leaf, FileText, Inbox, LockKeyhole, CircleHelp, MoreHorizontal,
   Phone, Mail, MapPin, ArrowRight, Info, Heart, Shield,
 } from "lucide-react";
-import type { UserProfile } from "./types";
+import type { Message as FirestoreMessage, Referral, UserProfile } from "./types";
+import { getPatientReferrals } from "./services/referrals";
+import { getOrCreatePatientConversation, sendMessage as sendFirebaseMessage, subscribeToConversationMessages } from "./services/messages";
 
 // ------------------------------------------------------
 // TYPES
@@ -23,7 +25,8 @@ type Page =
   | "Referrals"
   | "Notifications"
   | "Privacy & Consent"
-  | "Help & Support";
+  | "Help & Support"
+  | "Settings";
 
 type Appointment = {
   id: string;
@@ -63,6 +66,7 @@ const navigation: { name: Page; icon: typeof Home }[] = [
   { name: "Notifications", icon: Inbox },
   { name: "Privacy & Consent", icon: LockKeyhole },
   { name: "Help & Support", icon: CircleHelp },
+  { name: "Settings", icon: MoreHorizontal },
 ];
 
 // ------------------------------------------------------
@@ -138,13 +142,13 @@ const readStorage = <T,>(key: string, fallback: T): T => {
 };
 
 const inputStyle =
-  "w-full rounded-xl border border-slate-200 bg-white px-4 py-3 text-sm text-slate-800 outline-none transition-all duration-200 placeholder:text-slate-400 focus:border-[#63365F] focus:ring-4 focus:ring-[#63365F]/10";
+  "w-full rounded-xl border border-slate-200 bg-white px-4 py-3 text-sm text-slate-800 outline-none transition-all duration-200 placeholder:text-slate-400 focus:border-[#2563EB] focus:ring-4 focus:ring-[#2563EB]/10";
 
 const cardStyle =
   "rounded-2xl border border-slate-200 bg-white p-5 shadow-sm transition-all duration-200 hover:shadow-md sm:p-6";
 
 const primaryButtonStyle =
-  "inline-flex items-center justify-center gap-2 rounded-xl bg-[#63365F] px-5 py-3 text-sm font-semibold text-white transition-all duration-200 hover:-translate-y-0.5 hover:bg-[#4D294A] hover:shadow-md active:translate-y-0 disabled:cursor-not-allowed disabled:opacity-40";
+  "inline-flex items-center justify-center gap-2 rounded-xl bg-[#2563EB] px-5 py-3 text-sm font-semibold text-white transition-all duration-200 hover:-translate-y-0.5 hover:bg-[#123B73] hover:shadow-md active:translate-y-0 disabled:cursor-not-allowed disabled:opacity-40";
 
 const todayString = () => new Date().toISOString().split("T")[0];
 
@@ -152,7 +156,7 @@ const todayString = () => new Date().toISOString().split("T")[0];
 // MAIN APPLICATION
 // ------------------------------------------------------
 
-function App({ authenticatedProfile }: { authenticatedProfile: UserProfile }) {
+function App({ authenticatedProfile, onSignOut }: { authenticatedProfile: UserProfile; onSignOut: () => void }) {
   const [page, setPage] = useState<Page>("Dashboard");
   const [mobileMenu, setMobileMenu] = useState(false);
 
@@ -160,7 +164,7 @@ function App({ authenticatedProfile }: { authenticatedProfile: UserProfile }) {
     readStorage("sanad-appointments-v2", initialAppointments)
   );
 
-  const [messages, setMessages] = useState<Message[]>(() =>
+  const [messages] = useState<Message[]>(() =>
     readStorage("sanad-messages-v2", initialMessages)
   );
 
@@ -197,15 +201,13 @@ function App({ authenticatedProfile }: { authenticatedProfile: UserProfile }) {
   };
 
   const upcoming = appointments.filter(
-    (appointment) =>
-      appointment.status === "Upcoming" &&
-      appointment.date >= todayString()
-  );
+  (appointment) => appointment.date >= todayString()
+);
 
   const today = todayString();
 
   return (
-    <div className="min-h-screen bg-[#F8F5F8] text-slate-800">
+    <div className="min-h-screen bg-[#F4F8FD] text-slate-800">
       {/* MOBILE HEADER */}
       <header className="sticky top-0 z-40 flex items-center justify-between border-b border-slate-100 bg-white px-5 py-4 shadow-sm lg:hidden">
         <Brand />
@@ -237,6 +239,12 @@ function App({ authenticatedProfile }: { authenticatedProfile: UserProfile }) {
             Navigation
           </p>
           <NavItems page={page} onNavigate={openPage} />
+          <button
+            onClick={onSignOut}
+            className="mt-5 flex w-full items-center justify-center gap-2 rounded-xl bg-blue-700 px-4 py-3 text-sm font-semibold text-white transition hover:bg-blue-800"
+          >
+            <span>Log out</span>
+          </button>
         </div>
       )}
 
@@ -250,10 +258,16 @@ function App({ authenticatedProfile }: { authenticatedProfile: UserProfile }) {
           </p>
 
           <NavItems page={page} onNavigate={openPage} />
+          <button
+            onClick={onSignOut}
+            className="mt-5 flex w-full items-center justify-center gap-2 rounded-xl bg-blue-700 px-4 py-3 text-sm font-semibold text-white transition hover:bg-blue-800"
+          >
+            <span>Log out</span>
+          </button>
 
-          <div className="mt-auto rounded-2xl bg-[#F5EFF5] p-4">
-            <ShieldCheck className="mb-2 text-[#63365F]" size={22} />
-            <p className="text-sm font-semibold text-[#4D294A]">
+          <div className="mt-auto rounded-2xl bg-[#EAF2FF] p-4">
+            <ShieldCheck className="mb-2 text-[#2563EB]" size={22} />
+            <p className="text-sm font-semibold text-[#123B73]">
               Your wellbeing matters
             </p>
             <p className="mt-1 text-xs leading-5 text-slate-500">
@@ -273,7 +287,7 @@ function App({ authenticatedProfile }: { authenticatedProfile: UserProfile }) {
               </h1>
 
               <div className="hidden items-center gap-3 rounded-xl border border-slate-200 bg-white px-4 py-2 sm:flex">
-                <div className="flex h-9 w-9 items-center justify-center rounded-full bg-[#EADDEC] text-[#63365F]">
+                <div className="flex h-9 w-9 items-center justify-center rounded-full bg-[#DCEBFF] text-[#2563EB]">
                   <UserRound size={18} />
                 </div>
                 <div>
@@ -308,9 +322,7 @@ function App({ authenticatedProfile }: { authenticatedProfile: UserProfile }) {
                 <RemindersPage appointments={upcoming} />
               )}
 
-              {page === "Messages" && (
-                <MessagesPage messages={messages} setMessages={setMessages} />
-              )}
+              {page === "Messages" && (<MessagesPage patientUid={authenticatedProfile.uid} assignedWorkerUid={authenticatedProfile.assignedWorkerUid ?? null} />)}
 
               {page === "Health Information" && <HealthPage />}
 
@@ -318,10 +330,17 @@ function App({ authenticatedProfile }: { authenticatedProfile: UserProfile }) {
                 <ProfilePage profile={profile} setProfile={setProfile} />
               )}
 
-              {page === "Referrals" && <ReferralsPage />}
+              {page === "Referrals" && <ReferralsPage patientUid={authenticatedProfile.uid} />}
               {page === "Notifications" && <NotificationsPage />}
               {page === "Privacy & Consent" && <PrivacyPage />}
               {page === "Help & Support" && <HelpPage />}
+              {page === "Settings" && (
+                <SettingsPage
+                  profile={profile}
+                  onSignOut={onSignOut}
+                  onNavigate={openPage}
+                />
+              )}
             </div>
 
             {/* FOOTER */}
@@ -344,14 +363,14 @@ function App({ authenticatedProfile }: { authenticatedProfile: UserProfile }) {
               onClick={() => openPage(name)}
               className={`flex min-w-0 flex-1 flex-col items-center gap-1 rounded-xl px-1 py-2 text-[10px] font-medium transition ${
                 page === name
-                  ? "text-[#63365F]"
+                  ? "text-[#2563EB]"
                   : "text-slate-400 hover:text-slate-700"
               }`}
               aria-current={page === name ? "page" : undefined}
             >
               <span
                 className={`flex h-8 w-9 items-center justify-center rounded-xl transition ${
-                  page === name ? "bg-[#F0E5F0]" : ""
+                  page === name ? "bg-[#DCEBFF]" : ""
                 }`}
               >
                 <Icon size={19} />
@@ -372,11 +391,11 @@ function App({ authenticatedProfile }: { authenticatedProfile: UserProfile }) {
 function Brand() {
   return (
     <div className="flex items-center gap-3">
-      <div className="flex h-11 w-11 items-center justify-center rounded-2xl bg-[#63365F] text-white shadow-sm">
+      <div className="flex h-11 w-11 items-center justify-center rounded-2xl bg-[#2563EB] text-white shadow-sm">
         <Activity size={23} />
       </div>
       <div>
-        <p className="text-lg font-bold tracking-tight text-[#4D294A]">
+        <p className="text-lg font-bold tracking-tight text-[#123B73]">
           SANAD
         </p>
         <p className="text-xs text-slate-500">CareLink</p>
@@ -405,14 +424,14 @@ function NavItems({
           aria-current={page === name ? "page" : undefined}
           className={`flex items-center gap-3 rounded-xl px-4 py-3 text-left text-sm font-medium transition-all duration-200 ${
             page === name
-              ? "bg-[#EADDEC] text-[#63365F] shadow-sm"
-              : "text-slate-600 hover:bg-slate-50 hover:text-[#63365F]"
+              ? "bg-[#DCEBFF] text-[#2563EB] shadow-sm"
+              : "text-slate-600 hover:bg-slate-50 hover:text-[#2563EB]"
           }`}
         >
           <Icon size={19} />
           <span>{name}</span>
           {page === name && (
-            <span className="ml-auto h-2 w-2 rounded-full bg-[#63365F]" />
+            <span className="ml-auto h-2 w-2 rounded-full bg-[#2563EB]" />
           )}
         </button>
       ))}
@@ -443,7 +462,7 @@ function Dashboard({
 
   return (
     <div className="space-y-6">
-      <section className="relative overflow-hidden rounded-3xl bg-gradient-to-br from-[#63365F] to-[#4D294A] p-6 text-white shadow-lg sm:p-9">
+      <section className="relative overflow-hidden rounded-3xl bg-gradient-to-br from-[#2563EB] to-[#123B73] p-6 text-white shadow-lg sm:p-9">
         <div className="pointer-events-none absolute -right-12 -top-12 h-48 w-48 rounded-full border-[25px] border-white/5" />
         <div className="pointer-events-none absolute -bottom-20 right-20 h-48 w-48 rounded-full bg-white/5" />
 
@@ -460,7 +479,7 @@ function Dashboard({
           </p>
           <button
             onClick={() => onNavigate("Appointments")}
-            className="mt-6 inline-flex items-center gap-2 rounded-xl bg-white px-5 py-3 text-sm font-semibold text-[#63365F] transition hover:-translate-y-0.5 hover:bg-[#F5EFF5]"
+            className="mt-6 inline-flex items-center gap-2 rounded-xl bg-white px-5 py-3 text-sm font-semibold text-[#2563EB] transition hover:-translate-y-0.5 hover:bg-[#EAF2FF]"
           >
             <Plus size={18} />
             Manage appointments
@@ -503,16 +522,16 @@ function Dashboard({
             </div>
             <button
               onClick={() => onNavigate("Appointments")}
-              className="text-sm font-semibold text-[#63365F] hover:underline"
+              className="text-sm font-semibold text-[#2563EB] hover:underline"
             >
               View all
             </button>
           </div>
 
           {next ? (
-            <div className="rounded-2xl bg-[#F5EFF5] p-4 transition hover:bg-[#F0E5F0]">
+            <div className="rounded-2xl bg-[#EAF2FF] p-4 transition hover:bg-[#DCEBFF]">
               <div className="flex gap-4">
-                <div className="flex h-14 w-14 shrink-0 flex-col items-center justify-center rounded-xl bg-white text-[#63365F] shadow-sm">
+                <div className="flex h-14 w-14 shrink-0 flex-col items-center justify-center rounded-xl bg-white text-[#2563EB] shadow-sm">
                   <span className="text-xs font-medium">
                     {new Date(next.date + "T12:00:00").toLocaleString(
                       "en",
@@ -528,10 +547,13 @@ function Dashboard({
                   <p className="mt-1 text-sm text-slate-500">
                     {next.location}
                   </p>
-                  <p className="mt-1 flex items-center gap-1 text-sm text-slate-500">
+                  <p className="mt-1 flex items-center gap-2 text-sm text-slate-500">
                     <Clock size={14} />
                     {next.time}
                   </p>
+                  <span className="mt-2 inline-flex rounded-full bg-green-100 px-3 py-1 text-xs font-semibold text-green-700">
+                    Upcoming
+                  </span>
                 </div>
               </div>
             </div>
@@ -569,7 +591,7 @@ function Dashboard({
 
       <section className={cardStyle}>
         <div className="flex items-center gap-3">
-          <div className="flex h-11 w-11 items-center justify-center rounded-xl bg-[#F5EFF5] text-[#63365F]">
+          <div className="flex h-11 w-11 items-center justify-center rounded-xl bg-[#EAF2FF] text-[#2563EB]">
             <HeartPulse size={22} />
           </div>
           <div>
@@ -589,11 +611,11 @@ function Dashboard({
         </div>
       </section>
 
-      <section className="rounded-2xl border border-[#EADDEC] bg-[#F5EFF5] p-5">
+      <section className="rounded-2xl border border-[#DCEBFF] bg-[#EAF2FF] p-5">
         <div className="flex gap-3">
-          <Heart className="mt-1 shrink-0 text-[#63365F]" size={22} />
+          <Heart className="mt-1 shrink-0 text-[#2563EB]" size={22} />
           <div>
-            <h3 className="font-semibold text-[#4D294A]">
+            <h3 className="font-semibold text-[#123B73]">
               You are not alone in your care journey.
             </h3>
             <p className="mt-1 text-sm leading-6 text-slate-600">
@@ -625,7 +647,7 @@ function StatCard({
   return (
     <div className={`${cardStyle} hover:-translate-y-1`}>
       <div className="flex items-center gap-3">
-        <div className="flex h-11 w-11 shrink-0 items-center justify-center rounded-xl bg-[#F5EFF5] text-[#63365F]">
+        <div className="flex h-11 w-11 shrink-0 items-center justify-center rounded-xl bg-[#EAF2FF] text-[#2563EB]">
           <Icon size={21} />
         </div>
         <div className="text-sm text-slate-500">{label}</div>
@@ -640,7 +662,7 @@ function OverviewItem({ label, value }: { label: string; value: number }) {
   return (
     <div className="min-w-28 rounded-xl bg-slate-50 px-4 py-3">
       <p className="text-xs text-slate-500">{label}</p>
-      <p className="mt-1 text-xl font-bold text-[#63365F]">{value}</p>
+      <p className="mt-1 text-xl font-bold text-[#2563EB]">{value}</p>
     </div>
   );
 }
@@ -657,9 +679,9 @@ function QuickLink({
   return (
     <button
       onClick={onClick}
-      className="flex w-full items-center gap-3 rounded-xl border border-slate-100 p-3 text-left text-sm transition hover:border-[#EADDEC] hover:bg-[#F5EFF5]"
+      className="flex w-full items-center gap-3 rounded-xl border border-slate-100 p-3 text-left text-sm transition hover:border-[#DCEBFF] hover:bg-[#EAF2FF]"
     >
-      <Icon size={18} className="text-[#63365F]" />
+      <Icon size={18} className="text-[#2563EB]" />
       <span className="flex-1">{label}</span>
       <ChevronRight size={17} className="text-slate-400" />
     </button>
@@ -825,7 +847,7 @@ function AppointmentsPage({
               key={appointment.id}
               className={`${cardStyle} flex flex-wrap items-center gap-4`}
             >
-              <div className="flex h-14 w-14 shrink-0 flex-col items-center justify-center rounded-xl bg-[#F5EFF5] text-[#63365F]">
+              <div className="flex h-14 w-14 shrink-0 flex-col items-center justify-center rounded-xl bg-[#EAF2FF] text-[#2563EB]">
                 <span className="text-xs">
                   {new Date(appointment.date + "T12:00:00").toLocaleString(
                     "en",
@@ -841,10 +863,21 @@ function AppointmentsPage({
                 <p className="mt-1 text-sm text-slate-500">
                   {appointment.location}
                 </p>
-                <p className="mt-1 flex items-center gap-1 text-sm text-slate-500">
+                <p className="mt-1 flex items-center gap-2 text-sm text-slate-500">
                   <Clock size={14} />
-                  {appointment.time} · {appointment.status}
+                  {appointment.time}
                 </p>
+                <div className="mt-2">
+                  {appointment.date < todayString() ? (
+                    <span className="inline-flex rounded-full bg-slate-100 px-3 py-1 text-xs font-semibold text-slate-600">
+                      Passed
+                    </span>
+                  ) : (
+                    <span className="inline-flex rounded-full bg-green-100 px-3 py-1 text-xs font-semibold text-green-700">
+                      Upcoming
+                    </span>
+                  )}
+                </div>
               </div>
               <button
                 onClick={() => removeAppointment(appointment.id)}
@@ -859,7 +892,7 @@ function AppointmentsPage({
         )}
       </div>
 
-      <div className="rounded-2xl bg-[#F5EFF5] p-5 text-sm leading-6 text-[#4D294A]">
+      <div className="rounded-2xl bg-[#EAF2FF] p-5 text-sm leading-6 text-[#123B73]">
         <Info size={20} className="mb-2" />
         <p className="font-semibold">Appointment information</p>
         <p className="mt-1">
@@ -890,9 +923,9 @@ function RemindersPage({ appointments }: { appointments: Appointment[] }) {
             {appointments.map((appointment) => (
               <div
                 key={appointment.id}
-                className="flex gap-3 rounded-xl bg-[#F5EFF5] p-4"
+                className="flex gap-3 rounded-xl bg-[#EAF2FF] p-4"
               >
-                <Bell className="mt-1 shrink-0 text-[#63365F]" size={20} />
+                <Bell className="mt-1 shrink-0 text-[#2563EB]" size={20} />
                 <div>
                   <p className="font-semibold">{appointment.title}</p>
                   <p className="mt-1 text-sm text-slate-500">
@@ -907,7 +940,7 @@ function RemindersPage({ appointments }: { appointments: Appointment[] }) {
           </div>
         )}
       </div>
-      <div className="rounded-2xl bg-[#EADDEC] p-5 text-sm leading-6 text-[#4D294A]">
+      <div className="rounded-2xl bg-[#DCEBFF] p-5 text-sm leading-6 text-[#123B73]">
         <Bell size={20} className="mb-2" />
         <p className="font-semibold">Reminder feature preview</p>
         <p className="mt-1">
@@ -923,102 +956,236 @@ function RemindersPage({ appointments }: { appointments: Appointment[] }) {
 // ------------------------------------------------------
 
 function MessagesPage({
-  messages,
-  setMessages,
+  patientUid,
+  assignedWorkerUid,
 }: {
-  messages: Message[];
-  setMessages: React.Dispatch<React.SetStateAction<Message[]>>;
+  patientUid: string;
+  assignedWorkerUid: string | null;
 }) {
+  const [messages, setMessages] = useState<FirestoreMessage[]>([]);
+  const [conversationId, setConversationId] = useState("");
   const [text, setText] = useState("");
+  const [loading, setLoading] = useState(true);
+  const [sending, setSending] = useState(false);
+  const [error, setError] = useState("");
 
-  const sendMessage = (e: React.FormEvent) => {
-    e.preventDefault();
-    if (!text.trim()) return;
+  useEffect(() => {
+    let cancelled = false;
+    let unsubscribe: (() => void) | undefined;
 
-    const newMessage: Message = {
-      id: crypto.randomUUID(),
-      text: text.trim(),
-      sender: "patient",
-      time: new Date().toLocaleTimeString([], {
-        hour: "2-digit",
-        minute: "2-digit",
-      }),
+    async function connectConversation() {
+      if (!assignedWorkerUid) {
+        setLoading(false);
+        return;
+      }
+
+      setLoading(true);
+      setError("");
+
+      try {
+        const id = await getOrCreatePatientConversation(
+          patientUid,
+          assignedWorkerUid
+        );
+
+        if (cancelled) return;
+
+        setConversationId(id);
+
+        unsubscribe = subscribeToConversationMessages(
+          id,
+          (updatedMessages) => {
+            setMessages(updatedMessages);
+            setLoading(false);
+          },
+          (subscriptionError) => {
+            setError(subscriptionError.message);
+            setLoading(false);
+          }
+        );
+      } catch (connectionError) {
+        if (!cancelled) {
+          setError(
+            connectionError instanceof Error
+              ? connectionError.message
+              : "Unable to connect to your healthcare worker."
+          );
+          setLoading(false);
+        }
+      }
+    }
+
+    void connectConversation();
+
+    return () => {
+      cancelled = true;
+      unsubscribe?.();
     };
+  }, [patientUid, assignedWorkerUid]);
 
-    setMessages((previous) => [...previous, newMessage]);
-    setText("");
-  };
+  async function handleSendMessage(e: React.FormEvent) {
+    e.preventDefault();
+
+    const messageText = text.trim();
+
+    if (!messageText || !conversationId || sending) return;
+
+    setSending(true);
+    setError("");
+
+    try {
+      await sendFirebaseMessage({
+        conversationId,
+        senderUid: patientUid,
+        senderRole: "patient",
+        text: messageText,
+      });
+
+      setText("");
+    } catch (sendError) {
+      setError(
+        sendError instanceof Error
+          ? sendError.message
+          : "Your message could not be sent. Please try again."
+      );
+    } finally {
+      setSending(false);
+    }
+  }
+
+  function formatMessageTime(message: FirestoreMessage) {
+    if (!message.createdAt) return "Sending...";
+
+    return message.createdAt.toDate().toLocaleTimeString([], {
+      hour: "2-digit",
+      minute: "2-digit",
+    });
+  }
 
   return (
     <div className="space-y-5">
-      <p className="text-sm text-slate-500">
-        A demonstration of communication with your healthcare worker.
-      </p>
+      <div>
+        <h2 className="text-xl font-bold text-slate-800">
+          Messages
+        </h2>
+        <p className="mt-1 text-sm text-slate-500">
+          Communicate privately with your assigned healthcare worker.
+        </p>
+      </div>
 
-      <div className="flex min-h-[440px] flex-col overflow-hidden rounded-2xl border border-slate-200 bg-white shadow-sm">
-        <div className="flex items-center gap-3 border-b border-slate-100 p-4">
-          <div className="flex h-10 w-10 items-center justify-center rounded-full bg-[#F5EFF5] text-[#63365F]">
-            <Stethoscope size={20} />
-          </div>
-          <div>
-            <p className="font-semibold">Healthcare Support</p>
-            <p className="text-xs text-slate-500">Demo conversation</p>
-          </div>
+      {!assignedWorkerUid ? (
+        <div className="rounded-2xl border border-amber-200 bg-amber-50 p-5">
+          <h3 className="font-semibold text-amber-900">
+            No healthcare worker assigned yet
+          </h3>
+          <p className="mt-2 text-sm text-amber-800">
+            Your messaging conversation will become available after a
+            healthcare worker is assigned to your account. Please contact
+            your health facility for assistance.
+          </p>
         </div>
+      ) : (
+        <div className="flex min-h-[480px] flex-col overflow-hidden rounded-2xl border border-slate-200 bg-white shadow-sm">
+          <div className="flex items-center gap-3 border-b border-slate-100 p-4">
+            <div className="flex h-11 w-11 items-center justify-center rounded-full bg-blue-50 text-blue-700">
+              <Stethoscope size={21} />
+            </div>
+            <div>
+              <p className="font-semibold text-slate-800">
+                Your Healthcare Worker
+              </p>
+              <p className="text-xs text-slate-500">
+                Private patient support conversation
+              </p>
+            </div>
+            <div className="ml-auto flex items-center gap-2">
+              <span className="h-2 w-2 rounded-full bg-green-500" />
+              <span className="text-xs text-slate-500">
+                Connected
+              </span>
+            </div>
+          </div>
 
-        <div className="flex-1 space-y-3 overflow-y-auto p-4">
-          {messages.map((message) => (
-            <div
-              key={message.id}
-              className={`flex ${
-                message.sender === "patient" ? "justify-end" : "justify-start"
-              }`}
-            >
-              <div
-                className={`max-w-[85%] rounded-2xl px-4 py-3 ${
-                  message.sender === "patient"
-                    ? "rounded-br-sm bg-[#63365F] text-white"
-                    : "rounded-bl-sm bg-slate-100 text-slate-700"
-                }`}
-              >
-                <p className="whitespace-pre-wrap text-sm leading-6">
-                  {message.text}
+          <div className="flex-1 space-y-4 overflow-y-auto bg-slate-50/70 p-4">
+            {loading && (
+              <div className="py-10 text-center text-sm text-slate-500">
+                Connecting to your conversation...
+              </div>
+            )}
+
+            {!loading && !error && messages.length === 0 && (
+              <div className="py-12 text-center">
+                <MessageCircle className="mx-auto mb-3 text-blue-400" size={34} />
+                <p className="font-medium text-slate-700">
+                  Start your conversation
                 </p>
-                <p
-                  className={`mt-2 text-right text-[10px] ${
-                    message.sender === "patient"
-                      ? "text-white/80"
-                      : "text-slate-400"
-                  }`}
-                >
-                  {message.time}
+                <p className="mt-1 text-sm text-slate-500">
+                  Send a message to your assigned healthcare worker.
                 </p>
               </div>
-            </div>
-          ))}
-        </div>
+            )}
 
-        <form
-          onSubmit={sendMessage}
-          className="flex gap-2 border-t border-slate-100 p-3"
-        >
-          <input
-            value={text}
-            onChange={(e) => setText(e.target.value)}
-            placeholder="Type a message..."
-            className={`${inputStyle} min-w-0 flex-1`}
-            aria-label="Message"
-          />
-          <button
-            type="submit"
-            disabled={!text.trim()}
-            className="flex h-12 w-12 shrink-0 items-center justify-center rounded-xl bg-[#63365F] text-white transition hover:bg-[#4D294A] disabled:opacity-40"
-            aria-label="Send message"
+            {messages.map((message) => {
+              const isPatient = message.senderUid === patientUid;
+
+              return (
+                <div
+                  key={message.id}
+                  className={`flex ${isPatient ? "justify-end" : "justify-start"}`}
+                >
+                  <div
+                    className={`max-w-[85%] rounded-2xl px-4 py-3 ${
+                      isPatient
+                        ? "rounded-br-sm bg-blue-600 text-white"
+                        : "rounded-bl-sm border border-slate-200 bg-white text-slate-700"
+                    }`}
+                  >
+                    <p className="whitespace-pre-wrap break-words text-sm leading-6">
+                      {message.text}
+                    </p>
+                    <p
+                      className={`mt-2 text-right text-[10px] ${
+                        isPatient ? "text-blue-100" : "text-slate-400"
+                      }`}
+                    >
+                      {formatMessageTime(message)}
+                    </p>
+                  </div>
+                </div>
+              );
+            })}
+          </div>
+
+          {error && (
+            <div className="border-t border-red-100 bg-red-50 px-4 py-3 text-sm text-red-700">
+              {error}
+            </div>
+          )}
+
+          <form
+            onSubmit={handleSendMessage}
+            className="flex gap-2 border-t border-slate-100 bg-white p-3"
           >
-            <Send size={18} />
-          </button>
-        </form>
-      </div>
+            <input
+              value={text}
+              onChange={(e) => setText(e.target.value)}
+              placeholder="Type a message..."
+              maxLength={4000}
+              disabled={loading || !conversationId || sending}
+              className={`${inputStyle} min-w-0 flex-1`}
+              aria-label="Message"
+            />
+            <button
+              type="submit"
+              disabled={!text.trim() || !conversationId || sending || loading}
+              className="flex h-12 w-12 shrink-0 items-center justify-center rounded-xl bg-blue-600 text-white transition hover:bg-blue-700 disabled:opacity-40"
+              aria-label="Send message"
+            >
+              <Send size={18} />
+            </button>
+          </form>
+        </div>
+      )}
     </div>
   );
 }
@@ -1039,7 +1206,7 @@ function HealthPage() {
             key={title}
             className={`${cardStyle} hover:-translate-y-1`}
           >
-            <div className="mb-4 flex h-11 w-11 items-center justify-center rounded-xl bg-[#F5EFF5] text-[#63365F]">
+            <div className="mb-4 flex h-11 w-11 items-center justify-center rounded-xl bg-[#EAF2FF] text-[#2563EB]">
               <Icon size={22} />
             </div>
             <h3 className="font-bold">{title}</h3>
@@ -1049,7 +1216,7 @@ function HealthPage() {
           </div>
         ))}
       </div>
-      <div className="rounded-2xl bg-[#63365F] p-5 text-sm leading-6 text-white">
+      <div className="rounded-2xl bg-[#2563EB] p-5 text-sm leading-6 text-white">
         <ShieldCheck size={22} className="mb-2" />
         <p className="font-semibold">When you need medical care</p>
         <p className="mt-1 text-white/90">
@@ -1087,7 +1254,7 @@ function ProfilePage({
       </p>
 
       <div className={`${cardStyle} flex items-center gap-4`}>
-        <div className="flex h-16 w-16 items-center justify-center rounded-2xl bg-[#EADDEC] text-[#63365F]">
+        <div className="flex h-16 w-16 items-center justify-center rounded-2xl bg-[#DCEBFF] text-[#2563EB]">
           <UserRound size={30} />
         </div>
         <div>
@@ -1167,7 +1334,7 @@ function ProfilePage({
         </button>
 
         {saved && (
-          <p className="flex items-center gap-2 text-sm text-[#63365F]">
+          <p className="flex items-center gap-2 text-sm text-[#2563EB]">
             <CheckCircle2 size={17} />
             Profile updated in this session.
           </p>
@@ -1181,29 +1348,157 @@ function ProfilePage({
 // REFERRALS
 // ------------------------------------------------------
 
-function ReferralsPage() {
+function ReferralsPage({ patientUid }: { patientUid: string }) {
+  const [referrals, setReferrals] = useState<Referral[]>([]);
+  const [loading, setLoading] = useState(true);
+  const [error, setError] = useState("");
+  const [refreshKey, setRefreshKey] = useState(0);
+
+  useEffect(() => {
+    let active = true;
+
+    async function loadReferrals() {
+      setLoading(true);
+      setError("");
+
+      try {
+        const results = await getPatientReferrals(patientUid);
+        if (active) {
+          setReferrals(results);
+        }
+      } catch (err) {
+        console.error("Unable to load patient referrals:", err);
+        if (active) {
+          setError("We could not load your referrals. Please try again.");
+        }
+      } finally {
+        if (active) {
+          setLoading(false);
+        }
+      }
+    }
+
+    if (!patientUid) {
+      setError("Your patient account could not be identified.");
+      setLoading(false);
+    } else {
+      void loadReferrals();
+    }
+
+    return () => {
+      active = false;
+    };
+  }, [patientUid, refreshKey]);
+
+  const statusStyle = (status: Referral["status"]) => {
+    switch (status) {
+      case "accepted":
+        return "bg-blue-100 text-blue-700";
+      case "completed":
+        return "bg-green-100 text-green-700";
+      case "cancelled":
+        return "bg-red-100 text-red-700";
+      default:
+        return "bg-amber-100 text-amber-700";
+    }
+  };
+
   return (
     <div className="space-y-6">
-      <p className="text-sm text-slate-500">
-        View referrals and follow-up care from your healthcare team.
-      </p>
+      <div className="flex flex-wrap items-center justify-between gap-3">
+        <p className="text-sm text-slate-500">
+          View referrals and follow-up care from your healthcare team.
+        </p>
+        <button
+          type="button"
+          onClick={() => setRefreshKey((value) => value + 1)}
+          disabled={loading}
+          className="rounded-xl border border-slate-200 bg-white px-4 py-2 text-sm font-semibold text-slate-700 hover:bg-slate-50 disabled:opacity-50"
+        >
+          {loading ? "Loading..." : "Refresh"}
+        </button>
+      </div>
+
       <div className={cardStyle}>
-        <div className="mb-4 flex h-12 w-12 items-center justify-center rounded-xl bg-[#F5EFF5] text-[#63365F]">
+        <div className="mb-4 flex h-12 w-12 items-center justify-center rounded-xl bg-blue-50 text-blue-700">
           <FileText size={23} />
         </div>
+
         <h3 className="font-bold">Your referrals</h3>
         <p className="mt-2 text-sm leading-6 text-slate-500">
-          Referrals and follow-up information assigned by your healthcare
-          team will appear here.
+          Referrals and follow-up information assigned by your healthcare team.
         </p>
-        <div className="mt-5">
-          <EmptyState text="You do not have any referrals yet." />
-        </div>
+
+        {loading && (
+          <p className="mt-6 text-sm text-slate-500">
+            Loading your referrals...
+          </p>
+        )}
+
+        {!loading && error && (
+          <div className="mt-5 rounded-xl border border-red-200 bg-red-50 p-4">
+            <p className="text-sm text-red-700">{error}</p>
+            <button
+              type="button"
+              onClick={() => setRefreshKey((value) => value + 1)}
+              className="mt-3 text-sm font-semibold text-red-700 underline"
+            >
+              Try again
+            </button>
+          </div>
+        )}
+
+        {!loading && !error && referrals.length === 0 && (
+          <div className="mt-5">
+            <EmptyState text="You do not have any referrals yet." />
+          </div>
+        )}
+
+        {!loading && !error && referrals.length > 0 && (
+          <div className="mt-6 space-y-4">
+            {referrals.map((referral) => (
+              <article
+                key={referral.id}
+                className="rounded-xl border border-slate-200 p-4"
+              >
+                <div className="flex flex-wrap items-start justify-between gap-3">
+                  <div>
+                    <h4 className="font-semibold text-slate-800">
+                      {referral.destination}
+                    </h4>
+                    <p className="mt-1 text-xs text-slate-400">
+                      Referral ID: {referral.id}
+                    </p>
+                  </div>
+                  <span
+                    className={`rounded-full px-3 py-1 text-xs font-semibold capitalize ${statusStyle(referral.status)}`}
+                  >
+                    {referral.status}
+                  </span>
+                </div>
+
+                {referral.notes && (
+                  <p className="mt-4 whitespace-pre-wrap text-sm leading-6 text-slate-600">
+                    {referral.notes}
+                  </p>
+                )}
+
+                {referral.createdAt && (
+                  <p className="mt-4 text-xs text-slate-400">
+                    Created: {referral.createdAt.toDate().toLocaleDateString()}
+                  </p>
+                )}
+              </article>
+            ))}
+          </div>
+        )}
       </div>
     </div>
   );
 }
 
+// ------------------------------------------------------
+// REFERRALS
 // ------------------------------------------------------
 // NOTIFICATIONS
 // ------------------------------------------------------
@@ -1235,7 +1530,7 @@ function NotificationsPage() {
       <div className="space-y-3">
         {notifications.map(({ title, text, icon: Icon }) => (
           <div key={title} className={`${cardStyle} flex gap-3`}>
-            <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-xl bg-[#F5EFF5] text-[#63365F]">
+            <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-xl bg-[#EAF2FF] text-[#2563EB]">
               <Icon size={20} />
             </div>
             <div>
@@ -1264,7 +1559,7 @@ function PrivacyPage() {
 
       <div className={`${cardStyle} space-y-5`}>
         <div className="flex items-center gap-3">
-          <div className="flex h-12 w-12 items-center justify-center rounded-xl bg-[#F5EFF5] text-[#63365F]">
+          <div className="flex h-12 w-12 items-center justify-center rounded-xl bg-[#EAF2FF] text-[#2563EB]">
             <Shield size={24} />
           </div>
           <div>
@@ -1369,7 +1664,7 @@ function HelpPage() {
       <div className="grid gap-4 sm:grid-cols-2">
         {helpItems.map(({ title, description, icon: Icon }) => (
           <div key={title} className={cardStyle}>
-            <div className="mb-3 flex h-11 w-11 items-center justify-center rounded-xl bg-[#F5EFF5] text-[#63365F]">
+            <div className="mb-3 flex h-11 w-11 items-center justify-center rounded-xl bg-[#EAF2FF] text-[#2563EB]">
               <Icon size={22} />
             </div>
             <h3 className="font-bold">{title}</h3>
@@ -1387,20 +1682,20 @@ function HelpPage() {
           healthcare needs, contact your healthcare facility.
         </p>
         <div className="flex items-center gap-3 text-sm text-slate-600">
-          <MapPin size={18} className="text-[#63365F]" />
+          <MapPin size={18} className="text-[#2563EB]" />
           Kiryandongo Health Centre
         </div>
         <div className="flex items-center gap-3 text-sm text-slate-600">
-          <Phone size={18} className="text-[#63365F]" />
+          <Phone size={18} className="text-[#2563EB]" />
           Contact your facility directly for its current phone number.
         </div>
         <div className="flex items-center gap-3 text-sm text-slate-600">
-          <Mail size={18} className="text-[#63365F]" />
+          <Mail size={18} className="text-[#2563EB]" />
           Healthcare support through your facility
         </div>
       </div>
 
-      <div className="rounded-2xl bg-[#F5EFF5] p-5 text-sm leading-6 text-[#4D294A]">
+      <div className="rounded-2xl bg-[#EAF2FF] p-5 text-sm leading-6 text-[#123B73]">
         <div className="flex items-center gap-2">
           <CircleHelp size={20} />
           <p className="font-semibold">Important</p>
@@ -1413,4 +1708,112 @@ function HelpPage() {
   );
 }
 
+function SettingsPage({
+  profile,
+  onSignOut,
+  onNavigate,
+}: {
+  profile: ProfileState;
+  onSignOut: () => void;
+  onNavigate: (page: Page) => void;
+}) {
+  return (
+    <div className="mx-auto max-w-3xl space-y-6">
+      <section className="rounded-2xl border border-slate-200 bg-white p-6 shadow-sm">
+        <h2 className="text-lg font-bold text-slate-800">
+          Account settings
+        </h2>
+        <p className="mt-1 text-sm text-slate-500">
+          Manage your SANAD CareLink account.
+        </p>
+
+        <div className="mt-6 space-y-4">
+          <div>
+            <p className="text-xs font-semibold uppercase text-slate-400">
+              Full name
+            </p>
+            <p className="mt-1 font-medium">{profile.name || "Not provided"}</p>
+          </div>
+
+          <div>
+            <p className="text-xs font-semibold uppercase text-slate-400">
+              Phone number
+            </p>
+            <p className="mt-1 font-medium">{profile.phone || "Not provided"}</p>
+          </div>
+
+          <div>
+            <p className="text-xs font-semibold uppercase text-slate-400">
+              Preferred language
+            </p>
+            <p className="mt-1 font-medium">{profile.preferredLanguage}</p>
+          </div>
+
+          <div>
+            <p className="text-xs font-semibold uppercase text-slate-400">
+              Healthcare facility
+            </p>
+            <p className="mt-1 font-medium">{profile.facility}</p>
+          </div>
+        </div>
+      </section>
+
+      <section className="rounded-2xl border border-slate-200 bg-white p-6 shadow-sm">
+        <h2 className="font-bold text-slate-800">Quick settings</h2>
+        <div className="mt-4 grid gap-3 sm:grid-cols-2">
+          <button
+            onClick={() => onNavigate("My Profile")}
+            className="rounded-xl border border-slate-200 p-4 text-left transition hover:border-blue-400 hover:bg-blue-50"
+          >
+            <span className="font-semibold">Edit my profile</span>
+            <p className="mt-1 text-sm text-slate-500">
+              Review your personal information.
+            </p>
+          </button>
+
+          <button
+            onClick={() => onNavigate("Privacy & Consent")}
+            className="rounded-xl border border-slate-200 p-4 text-left transition hover:border-blue-400 hover:bg-blue-50"
+          >
+            <span className="font-semibold">Privacy and consent</span>
+            <p className="mt-1 text-sm text-slate-500">
+              Review your privacy information.
+            </p>
+          </button>
+
+          <button
+            onClick={() => onNavigate("Help & Support")}
+            className="rounded-xl border border-slate-200 p-4 text-left transition hover:border-blue-400 hover:bg-blue-50"
+          >
+            <span className="font-semibold">Help and support</span>
+            <p className="mt-1 text-sm text-slate-500">
+              Get help using SANAD CareLink.
+            </p>
+          </button>
+        </div>
+      </section>
+
+      <section className="rounded-2xl border border-red-100 bg-white p-6 shadow-sm">
+        <h2 className="font-bold text-slate-800">Sign out</h2>
+        <p className="mt-1 text-sm text-slate-500">
+          Sign out of your SANAD CareLink account on this device.
+        </p>
+        <button
+          onClick={onSignOut}
+          className="mt-5 rounded-xl bg-red-600 px-6 py-3 text-sm font-semibold text-white transition hover:bg-red-700"
+        >
+          Log out of SANAD CareLink
+        </button>
+      </section>
+    </div>
+  );
+}
+
+
 export default App;
+
+
+
+
+
+

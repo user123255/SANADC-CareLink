@@ -1,3 +1,4 @@
+
 import {
   addDoc,
   collection,
@@ -26,21 +27,38 @@ export type CreateAppointmentInput = {
 };
 
 /**
- * Create a new patient appointment.
+ * Submit a patient appointment request.
+ * All patient-created requests begin as pending.
  */
 export async function createAppointment(
   input: CreateAppointmentInput
 ): Promise<string> {
+  const patientUid = input.patientUid.trim();
+  const title = input.title.trim();
+  const location = input.location.trim();
+
+  if (!patientUid || !title || !location || !input.date || !input.time) {
+    throw new Error("Please complete all appointment details.");
+  }
+
+  if (!/^\d{4}-\d{2}-\d{2}$/.test(input.date)) {
+    throw new Error("Please provide a valid appointment date.");
+  }
+
+  if (!/^\d{2}:\d{2}$/.test(input.time)) {
+    throw new Error("Please provide a valid appointment time.");
+  }
+
   const appointmentRef = await addDoc(
     collection(db, "appointments"),
     {
-      patientUid: input.patientUid,
+      patientUid,
       assignedWorkerUid: input.assignedWorkerUid ?? null,
-      title: input.title.trim(),
+      title,
       date: input.date,
       time: input.time,
-      location: input.location.trim(),
-      status: "scheduled",
+      location,
+      status: "pending",
       createdAt: serverTimestamp(),
       updatedAt: serverTimestamp(),
     }
@@ -55,6 +73,10 @@ export async function createAppointment(
 export async function getPatientAppointments(
   patientUid: string
 ): Promise<Appointment[]> {
+  if (!patientUid.trim()) {
+    throw new Error("A patient account is required.");
+  }
+
   const appointmentsQuery = query(
     collection(db, "appointments"),
     where("patientUid", "==", patientUid),
@@ -75,6 +97,10 @@ export async function getPatientAppointments(
 export async function getWorkerAppointments(
   workerUid: string
 ): Promise<Appointment[]> {
+  if (!workerUid.trim()) {
+    throw new Error("A healthcare worker account is required.");
+  }
+
   const appointmentsQuery = query(
     collection(db, "appointments"),
     where("assignedWorkerUid", "==", workerUid),
@@ -91,11 +117,16 @@ export async function getWorkerAppointments(
 
 /**
  * Update an appointment's status.
+ * Firestore rules determine which roles may perform each transition.
  */
 export async function updateAppointmentStatus(
   appointmentId: string,
   status: AppointmentStatus
 ): Promise<void> {
+  if (!appointmentId.trim()) {
+    throw new Error("An appointment ID is required.");
+  }
+
   const appointmentRef = doc(db, "appointments", appointmentId);
 
   await updateDoc(appointmentRef, {

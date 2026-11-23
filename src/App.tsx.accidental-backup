@@ -1,0 +1,92 @@
+@'
+import {
+  collection,
+  onSnapshot,
+  query,
+  where,
+} from "firebase/firestore";
+
+import { db } from "../lib/firebase";
+import type { Appointment, Reminder } from "../types";
+
+export interface PatientDashboardData {
+  appointments: Appointment[];
+  reminders: Reminder[];
+}
+
+export function subscribeToPatientDashboard(
+  patientUid: string,
+  onData: (data: PatientDashboardData) => void,
+  onError?: (error: Error) => void
+): () => void {
+  if (!patientUid.trim()) {
+    throw new Error("A valid patient account is required.");
+  }
+
+  let appointments: Appointment[] = [];
+  let reminders: Reminder[] = [];
+
+  let appointmentsLoaded = false;
+  let remindersLoaded = false;
+
+  const publish = () => {
+    if (!appointmentsLoaded || !remindersLoaded) return;
+
+    onData({ appointments, reminders });
+  };
+
+  const handleError = (error: Error) => {
+    onError?.(error);
+  };
+
+  const appointmentsQuery = query(
+    collection(db, "appointments"),
+    where("patientUid", "==", patientUid)
+  );
+
+  const remindersQuery = query(
+    collection(db, "reminders"),
+    where("patientUid", "==", patientUid)
+  );
+
+  const unsubscribeAppointments = onSnapshot(
+    appointmentsQuery,
+    (snapshot) => {
+      appointments = snapshot.docs.map((item) => ({
+        ...item.data(),
+        id: item.id,
+      })) as Appointment[];
+
+      appointments.sort((a, b) => a.date.localeCompare(b.date));
+      appointmentsLoaded = true;
+      publish();
+    },
+    handleError
+  );
+
+  const unsubscribeReminders = onSnapshot(
+    remindersQuery,
+    (snapshot) => {
+      reminders = snapshot.docs.map((item) => ({
+        ...item.data(),
+        id: item.id,
+      })) as Reminder[];
+
+      reminders.sort(
+        (a, b) =>
+          (a.scheduledAt?.toMillis() ?? 0) -
+          (b.scheduledAt?.toMillis() ?? 0)
+      );
+
+      remindersLoaded = true;
+      publish();
+    },
+    handleError
+  );
+
+  return () => {
+    unsubscribeAppointments();
+    unsubscribeReminders();
+  };
+}
+'@ | Set-Content -Encoding utf8 src\services\patientDashboard.ts
