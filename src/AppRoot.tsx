@@ -1,3 +1,4 @@
+
 import { useEffect, useRef, useState } from "react";
 import { onAuthStateChanged, signOut, type User } from "firebase/auth";
 import { doc, getDoc } from "firebase/firestore";
@@ -15,7 +16,9 @@ export default function AppRoot() {
   const [profile, setProfile] = useState<UserProfile | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState("");
-  const [applicationStatus, setApplicationStatus] = useState<string | null>(null);
+  const [applicationStatus, setApplicationStatus] = useState<string | null>(
+    null
+  );
   const [retryCount, setRetryCount] = useState(0);
 
   const authRequest = useRef(0);
@@ -41,7 +44,9 @@ export default function AppRoot() {
       try {
         let profileSnapshot = null;
 
-        for (let attempt = 0; attempt < 4; attempt++) {
+        // Allow time for the registration process to finish creating
+        // the Firestore profile after Firebase Authentication succeeds.
+        for (let attempt = 0; attempt < 7; attempt++) {
           loadingStage = "user profile";
 
           profileSnapshot = await getDoc(
@@ -52,8 +57,8 @@ export default function AppRoot() {
 
           if (profileSnapshot.exists()) break;
 
-          if (attempt < 3) {
-            await new Promise((resolve) => setTimeout(resolve, 700));
+          if (attempt < 6) {
+            await new Promise((resolve) => setTimeout(resolve, 800));
           }
         }
 
@@ -70,7 +75,22 @@ export default function AppRoot() {
 
           if (applicationSnapshot.exists()) {
             const application = applicationSnapshot.data();
-            setApplicationStatus(application.status || "submitted");
+
+            if (
+              application.uid !== currentUser.uid ||
+              application.requestedRole !== "healthWorker"
+            ) {
+              setError(
+                "Your staff application contains invalid account information. Please contact the administrator."
+              );
+              return;
+            }
+
+            setApplicationStatus(
+              typeof application.status === "string"
+                ? application.status
+                : "submitted"
+            );
           } else {
             setError(
               "Your account exists, but your SANAD profile was not found. Please contact the administrator."
@@ -81,6 +101,27 @@ export default function AppRoot() {
         }
 
         const data = profileSnapshot.data() as UserProfile;
+
+        if (data.uid !== currentUser.uid) {
+          setError(
+            "Your profile does not match your authenticated account. Please contact the administrator."
+          );
+          return;
+        }
+
+        const authenticatedEmail = currentUser.email?.trim().toLowerCase();
+        const profileEmail = data.email?.trim().toLowerCase();
+
+        if (
+          !authenticatedEmail ||
+          !profileEmail ||
+          authenticatedEmail !== profileEmail
+        ) {
+          setError(
+            "Your account email does not match your SANAD profile. Please contact the administrator."
+          );
+          return;
+        }
 
         if (
           data.role !== "patient" &&
@@ -121,7 +162,9 @@ export default function AppRoot() {
             );
           } else {
             setError(
-              `Unable to load your ${loadingStage}. Error: ${firebaseError.code || "unknown"}. ${firebaseError.message || ""}`
+              `Unable to load your ${loadingStage}. Error: ${
+                firebaseError.code || "unknown"
+              }. ${firebaseError.message || ""}`
             );
           }
         }
@@ -175,7 +218,9 @@ export default function AppRoot() {
     );
   }
 
-  if (!user) return <AuthScreen />;
+  if (!user) {
+    return <AuthScreen />;
+  }
 
   if (applicationStatus) {
     return (
@@ -184,16 +229,20 @@ export default function AppRoot() {
           <div className="mx-auto flex h-16 w-16 items-center justify-center rounded-2xl bg-blue-50 text-3xl">
             🕒
           </div>
+
           <h1 className="mt-5 text-2xl font-bold text-slate-900">
             Staff application submitted
           </h1>
+
           <p className="mt-3 text-sm leading-6 text-slate-600">
-            Your staff application is awaiting administrator review. Dashboard
-            access will be available after approval and activation.
+            Your staff application is awaiting administrator review.
+            Dashboard access will be available after approval and activation.
           </p>
+
           <p className="mt-4 rounded-xl bg-blue-50 px-4 py-3 text-sm font-semibold text-blue-800">
             Application status: {applicationStatus}
           </p>
+
           <button
             onClick={handleSignOut}
             className="mt-6 w-full rounded-xl bg-blue-700 px-5 py-3 font-semibold text-white hover:bg-blue-800"
@@ -212,18 +261,22 @@ export default function AppRoot() {
           <div className="mx-auto flex h-14 w-14 items-center justify-center rounded-full bg-blue-50 text-2xl">
             🔒
           </div>
+
           <h1 className="mt-4 text-xl font-bold text-slate-900">
             Unable to load your dashboard
           </h1>
+
           <p className="mt-3 text-sm leading-6 text-slate-600">
             {error || "Your profile could not be loaded."}
           </p>
+
           <button
             onClick={handleRetry}
             className="mt-6 w-full rounded-xl bg-blue-700 px-5 py-3 font-semibold text-white hover:bg-blue-800"
           >
             Retry loading profile
           </button>
+
           <button
             onClick={handleSignOut}
             className="mt-3 w-full rounded-xl border border-slate-200 bg-white px-5 py-3 font-semibold text-slate-700 hover:bg-slate-50"
@@ -236,7 +289,12 @@ export default function AppRoot() {
   }
 
   if (profile.role === "patient") {
-    return <App authenticatedProfile={profile} onSignOut={handleSignOut} />;
+    return (
+      <App
+        authenticatedProfile={profile}
+        onSignOut={handleSignOut}
+      />
+    );
   }
 
   if (profile.role === "healthWorker") {

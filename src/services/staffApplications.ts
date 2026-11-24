@@ -1,8 +1,8 @@
 
-import { doc, serverTimestamp, setDoc } from "firebase/firestore";
-import { db } from "../lib/firebase";
+import { doc, runTransaction, serverTimestamp } from "firebase/firestore";
+import { auth, db } from "../lib/firebase";
 
-export type StaffApplicationRole = "healthWorker" | "admin";
+export type StaffApplicationRole = "healthWorker";
 
 export interface StaffApplicationInput {
   uid: string;
@@ -15,29 +15,55 @@ export interface StaffApplicationInput {
 export async function createStaffApplication(
   input: StaffApplicationInput
 ): Promise<void> {
+  const currentUser = auth.currentUser;
+
   const fullName = input.fullName.trim();
   const email = input.email.trim().toLowerCase();
   const facility = input.facility.trim();
 
-  if (!input.uid || !fullName || !email || !facility) {
-    throw new Error("Please complete all required application details.");
+  if (!currentUser) {
+    throw new Error("Please sign in before submitting your application.");
+  }
+
+  if (currentUser.uid !== input.uid) {
+    throw new Error("Your account could not be verified.");
   }
 
   if (
-    input.requestedRole !== "healthWorker" &&
-    input.requestedRole !== "admin"
+    !currentUser.email ||
+    currentUser.email.trim().toLowerCase() !== email
   ) {
-    throw new Error("Invalid staff application role.");
+    throw new Error("The application email must match your signed-in email.");
   }
 
-  await setDoc(doc(db, "staffApplications", input.uid), {
-    uid: input.uid,
-    fullName,
-    email,
-    requestedRole: input.requestedRole,
-    facility,
-    status: "pending",
-    createdAt: serverTimestamp(),
-    updatedAt: serverTimestamp(),
+  if (!fullName || !email || !facility) {
+    throw new Error("Please complete all required application details.");
+  }
+
+  if (input.requestedRole !== "healthWorker") {
+    throw new Error("Only healthcare worker applications are accepted.");
+  }
+
+  const applicationRef = doc(db, "staffApplications", currentUser.uid);
+
+  await runTransaction(db, async (transaction) => {
+    const existingApplication = await transaction.get(applicationRef);
+
+    if (existingApplication.exists()) {
+      throw new Error(
+        "An application already exists for this account. Please contact the administrator if you need assistance."
+      );
+    }
+
+    transaction.set(applicationRef, {
+      uid: currentUser.uid,
+      fullName,
+      email,
+      requestedRole: "healthWorker",
+      facility,
+      status: "pending",
+      createdAt: serverTimestamp(),
+      updatedAt: serverTimestamp(),
+    });
   });
 }

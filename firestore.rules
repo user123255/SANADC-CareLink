@@ -1,7 +1,12 @@
+
 rules_version = '2';
 
 service cloud.firestore {
   match /databases/{database}/documents {
+
+    // --------------------------------------------------
+    // AUTHENTICATION AND ROLE HELPERS
+    // --------------------------------------------------
 
     function signedIn() {
       return request.auth != null;
@@ -13,7 +18,9 @@ service cloud.firestore {
     }
 
     function myProfile() {
-      return get(/databases/$(database)/documents/users/$(request.auth.uid)).data;
+      return get(
+        /databases/$(database)/documents/users/$(request.auth.uid)
+      ).data;
     }
 
     function isPatient() {
@@ -36,46 +43,49 @@ service cloud.firestore {
 
     function isAssignedWorker(patientUid) {
       return isWorker() &&
-        get(/databases/$(database)/documents/users/$(patientUid)).data.assignedWorkerUid
-          == request.auth.uid;
+        exists(/databases/$(database)/documents/users/$(patientUid)) &&
+        get(
+          /databases/$(database)/documents/users/$(patientUid)
+        ).data.assignedWorkerUid == request.auth.uid;
     }
 
-    function isConversationParticipant() {
-      return signedIn() &&
-        request.auth.uid in resource.data.participantUids;
-    }
-
+    // --------------------------------------------------
     // USER PROFILES
+    // --------------------------------------------------
+
     match /users/{userId} {
 
-      // Users can read their own profiles.
-      // Workers can read patients assigned to them.
-      // Authenticated staff can read other staff profiles.
-      allow get: if signedIn() && (
-        request.auth.uid == userId ||
-        (
-          isWorker() &&
-          resource.data.role == "patient" &&
-          resource.data.assignedWorkerUid == request.auth.uid
-        ) ||
-        (
-          (isWorker() || isAdmin()) &&
-          resource.data.role in ["healthWorker", "admin"]
-        )
-      );
+      // A user can read their own profile.
+      // Administrators can read all profiles.
+      allow get: if signedIn() &&
+        (request.auth.uid == userId || isAdmin());
 
-      // Workers can query only their assigned active patients.
-      allow list: if isWorker() &&
-        resource.data.role == "patient" &&
-        resource.data.assignedWorkerUid == request.auth.uid &&
-        resource.data.accountStatus == "active";
+      allow list: if isAdmin() || (
+  isWorker() &&
+  resource.data.role == "patient" &&
+  resource.data.assignedWorkerUid == request.auth.uid &&
+  resource.data.accountStatus == "active"
+);
 
-      // Public registration can create patient accounts only.
+      // Public self-registration is restricted to patients.
+      // Administrator and healthcare-worker profiles must
+      // be provisioned through trusted authorization.
       allow create: if signedIn() &&
         request.auth.uid == userId &&
         request.resource.data.uid == userId &&
         request.resource.data.role == "patient" &&
         request.resource.data.accountStatus == "active" &&
+        request.resource.data.assignedWorkerUid == null &&
+        request.resource.data.email == request.auth.token.email &&
+        request.resource.data.fullName is string &&
+        request.resource.data.fullName.size() >= 2 &&
+        request.resource.data.fullName.size() <= 120 &&
+        request.resource.data.facility is string &&
+        request.resource.data.facility.size() >= 2 &&
+        request.resource.data.phone is string &&
+        request.resource.data.preferredLanguage is string &&
+        request.resource.data.createdAt == request.time &&
+        request.resource.data.updatedAt == request.time &&
         request.resource.data.keys().hasOnly([
           "uid",
           "fullName",
@@ -88,12 +98,12 @@ service cloud.firestore {
           "accountStatus",
           "createdAt",
           "updatedAt"
-        ]) &&
-        request.resource.data.createdAt == request.time &&
-        request.resource.data.updatedAt == request.time;
+        ]);
 
-      // Patients can update permitted profile fields only.
-      allow update: if signedIn() &&
+      // Patients can update only their basic profile information.
+      // Administrators can assign or unassign a healthcare worker.
+      allow update: if (
+        signedIn() &&
         request.auth.uid == userId &&
         resource.data.role == "patient" &&
         request.resource.data.role == resource.data.role &&
@@ -107,18 +117,42 @@ service cloud.firestore {
             "preferredLanguage",
             "facility",
             "updatedAt"
-          ]);
+          ])
+      ) || (
+        isAdmin() &&
+        resource.data.role == "patient" &&
+        request.resource.data.role == resource.data.role &&
+        request.resource.data.uid == resource.data.uid &&
+        request.resource.data.accountStatus == resource.data.accountStatus &&
+        (
+          request.resource.data.assignedWorkerUid == null ||
+          (
+            request.resource.data.assignedWorkerUid is string &&
+            exists(
+              /databases/$(database)/documents/users/$(request.resource.data.assignedWorkerUid)
+            ) &&
+            get(
+              /databases/$(database)/documents/users/$(request.resource.data.assignedWorkerUid)
+            ).data.role == "healthWorker" &&
+            get(
+              /databases/$(database)/documents/users/$(request.resource.data.assignedWorkerUid)
+            ).data.accountStatus == "active"
+          )
+        ) &&
+        request.resource.data.diff(resource.data).affectedKeys()
+          .hasOnly(["assignedWorkerUid", "updatedAt"])
+      );
 
-      // No client-side account deletion or role changes.
+      // User profiles cannot be deleted through the client.
       allow delete: if false;
     }
 
+    // --------------------------------------------------
+    // STAFF APPLICATIONS
+    // --------------------------------------------------
 
-    // STAFF ACCOUNT APPLICATIONS
     match /staffApplications/{applicationId} {
 
-      // Applicants can read their own application.
-      // Active administrators can read applications for review.
       allow get: if signedIn() && (
         request.auth.uid == applicationId ||
         isAdmin()
@@ -126,16 +160,21 @@ service cloud.firestore {
 
       allow list: if isAdmin();
 
-      // Applicants may submit an application for staff access.
-      // This does not grant them any staff privileges.
+      // Anyone applying for staff access can only request
+      // healthcare-worker status, never administrator status.
       allow create: if signedIn() &&
         request.auth.uid == applicationId &&
         request.resource.data.uid == request.auth.uid &&
-        request.resource.data.requestedRole in [
-          "healthWorker",
-          "admin"
-        ] &&
+        request.resource.data.requestedRole == "healthWorker" &&
         request.resource.data.status == "pending" &&
+        request.resource.data.fullName is string &&
+        request.resource.data.fullName.size() >= 2 &&
+        request.resource.data.fullName.size() <= 120 &&
+        request.resource.data.email == request.auth.token.email &&
+        request.resource.data.facility is string &&
+        request.resource.data.facility.size() >= 2 &&
+        request.resource.data.createdAt == request.time &&
+        request.resource.data.updatedAt == request.time &&
         request.resource.data.keys().hasOnly([
           "uid",
           "fullName",
@@ -145,37 +184,39 @@ service cloud.firestore {
           "status",
           "createdAt",
           "updatedAt"
-        ]) &&
-        request.resource.data.createdAt == request.time &&
-        request.resource.data.updatedAt == request.time;
+        ]);
 
-      // Approval and rejection must happen through trusted backend code.
+      // Approval and rejection must be performed by trusted backend code.
       allow update, delete: if false;
     }
 
-
+    // --------------------------------------------------
     // APPOINTMENTS
-    match /appointments/{appointmentId} {
+    // --------------------------------------------------
 
-      allow read: if signedIn() && (
+    match /appointments/{appointmentId} {
+            allow read: if signedIn() && (
+        isAdmin() ||
         resource.data.patientUid == request.auth.uid ||
         resource.data.assignedWorkerUid == request.auth.uid
       );
-
+      
       allow create: if signedIn() &&
-        request.resource.data.status == "scheduled" &&
         request.resource.data.patientUid is string &&
         (
+          isAdmin() ||
           (
             isPatient() &&
             request.resource.data.patientUid == request.auth.uid &&
             request.resource.data.assignedWorkerUid ==
-              myProfile().assignedWorkerUid
+              myProfile().assignedWorkerUid &&
+            request.resource.data.status == "pending"
           ) ||
           (
             isWorker() &&
             request.resource.data.assignedWorkerUid == request.auth.uid &&
-            isAssignedWorker(request.resource.data.patientUid)
+            isAssignedWorker(request.resource.data.patientUid) &&
+            request.resource.data.status == "scheduled"
           )
         );
 
@@ -183,11 +224,14 @@ service cloud.firestore {
         request.resource.data.diff(resource.data).affectedKeys()
           .hasOnly(["status", "updatedAt"]) &&
         (
+          isAdmin() ||
           (
             isWorker() &&
             resource.data.assignedWorkerUid == request.auth.uid &&
             request.resource.data.status in [
-              "scheduled", "completed", "cancelled"
+              "scheduled",
+              "completed",
+              "cancelled"
             ]
           ) ||
           (
@@ -197,13 +241,22 @@ service cloud.firestore {
           )
         );
 
-      allow delete: if false;
+      allow delete: if isAdmin();
     }
 
+    // --------------------------------------------------
     // CONVERSATIONS
+    // --------------------------------------------------
+
     match /conversations/{conversationId} {
 
+      function isConversationParticipant() {
+        return signedIn() &&
+          request.auth.uid in resource.data.participantUids;
+      }
+
       allow get, list: if signedIn() && (
+        isAdmin() ||
         resource.data.patientUid == request.auth.uid ||
         resource.data.assignedWorkerUid == request.auth.uid
       );
@@ -238,9 +291,22 @@ service cloud.firestore {
           )
         );
 
-      allow update, delete: if false;
+      // Participants may update message preview information only.
+      allow update: if isConversationParticipant() &&
+        request.resource.data.diff(resource.data).affectedKeys()
+          .hasOnly([
+            "lastMessageText",
+            "lastMessageAt",
+            "lastMessageSenderUid",
+            "updatedAt"
+          ]);
 
+      allow delete: if isAdmin();
+
+      // ------------------------------------------------
       // CONVERSATION MESSAGES
+      // ------------------------------------------------
+
       match /messages/{messageId} {
 
         function conversationData() {
@@ -255,7 +321,7 @@ service cloud.firestore {
             conversationData().status == "active";
         }
 
-        allow read: if isParticipant();
+        allow read: if isParticipant() || isAdmin();
 
         allow create: if isParticipant() &&
           request.resource.data.senderUid == request.auth.uid &&
@@ -283,39 +349,60 @@ service cloud.firestore {
           request.resource.data.diff(resource.data).affectedKeys()
             .hasOnly(["readAt"]);
 
-        allow delete: if false;
+        allow delete: if isAdmin();
       }
     }
 
+    // --------------------------------------------------
     // REFERRALS
+    // --------------------------------------------------
+
     match /referrals/{referralId} {
 
       allow read: if signedIn() && (
+        isAdmin() ||
         resource.data.patientUid == request.auth.uid ||
         resource.data.assignedWorkerUid == request.auth.uid
       );
 
-      allow create: if isWorker() &&
+      allow create: if (
+        isWorker() &&
         request.resource.data.assignedWorkerUid == request.auth.uid &&
         request.resource.data.createdByUid == request.auth.uid &&
         isAssignedWorker(request.resource.data.patientUid) &&
-        request.resource.data.status == "pending";
+        request.resource.data.status == "pending"
+      ) || (
+        isAdmin() &&
+        request.resource.data.status == "pending"
+      );
 
-      allow update: if isWorker() &&
-        resource.data.assignedWorkerUid == request.auth.uid &&
+      allow update: if (
+        isAdmin() ||
+        (
+          isWorker() &&
+          resource.data.assignedWorkerUid == request.auth.uid
+        )
+      ) &&
         request.resource.data.diff(resource.data).affectedKeys()
           .hasOnly(["status", "updatedAt"]) &&
         request.resource.data.status in [
-          "pending", "accepted", "completed", "cancelled"
+          "pending",
+          "accepted",
+          "completed",
+          "cancelled"
         ];
 
-      allow delete: if false;
+      allow delete: if isAdmin();
     }
 
+    // --------------------------------------------------
     // REMINDERS
+    // --------------------------------------------------
+
     match /reminders/{reminderId} {
 
       allow read: if signedIn() && (
+        isAdmin() ||
         resource.data.patientUid == request.auth.uid ||
         resource.data.assignedWorkerUid == request.auth.uid
       );
@@ -338,18 +425,52 @@ service cloud.firestore {
           (
             isWorker() &&
             resource.data.assignedWorkerUid == request.auth.uid &&
-            request.resource.data.status in ["read", "cancelled"]
-          )
+            request.resource.data.status in [
+              "read",
+              "cancelled",
+              "completed"
+            ]
+          ) ||
+          isAdmin()
         );
 
-      allow delete: if false;
+      allow delete: if isAdmin();
     }
 
+    // --------------------------------------------------
+    // NOTIFICATIONS
+    // --------------------------------------------------
+
+    match /notifications/{notificationId} {
+
+      allow get, list: if signedIn() && (
+        isAdmin() ||
+        resource.data.userUid == request.auth.uid
+      );
+
+      allow create: if (
+        isAdmin() &&
+        request.resource.data.userUid is string
+      ) || (
+        isWorker() &&
+        request.resource.data.userUid is string &&
+        isAssignedWorker(request.resource.data.userUid)
+      );
+
+      allow update: if signedIn() &&
+        resource.data.userUid == request.auth.uid &&
+        request.resource.data.diff(resource.data).affectedKeys()
+          .hasOnly(["read", "readAt", "updatedAt"]);
+
+      allow delete: if isAdmin();
+    }
+
+    // --------------------------------------------------
     // HEALTH INFORMATION
+    // --------------------------------------------------
+
     match /healthContent/{contentId} {
 
-      // Signed-in users can read approved content.
-      // Administrators can also read drafts they created.
       allow read: if signedIn() && (
         resource.data.status == "approved" ||
         (
@@ -358,12 +479,10 @@ service cloud.firestore {
         )
       );
 
-      // Administrators can create drafts.
       allow create: if isAdmin() &&
         request.resource.data.createdByUid == request.auth.uid &&
         request.resource.data.status == "draft";
 
-      // Admins can edit content, but cannot publish or approve it.
       allow update: if isAdmin() &&
         resource.data.status != "approved" &&
         request.resource.data.status == resource.data.status &&
@@ -376,14 +495,19 @@ service cloud.firestore {
             "updatedAt"
           ]);
 
-      allow delete: if false;
+      allow delete: if isAdmin();
     }
 
+    // --------------------------------------------------
     // CONSENT RECORDS
+    // --------------------------------------------------
+
     match /consents/{consentId} {
 
-      allow read: if signedIn() &&
-        resource.data.userUid == request.auth.uid;
+      allow read: if signedIn() && (
+        isAdmin() ||
+        resource.data.userUid == request.auth.uid
+      );
 
       allow create: if isPatient() &&
         request.resource.data.userUid == request.auth.uid &&
@@ -399,14 +523,24 @@ service cloud.firestore {
       allow delete: if false;
     }
 
+    // --------------------------------------------------
     // AUDIT LOGS
+    // --------------------------------------------------
+
     match /auditLogs/{logId} {
 
       allow read: if isAdmin();
 
-      // Only trusted server-side functions may write audit logs.
+      // Trusted server-side code only.
       allow create, update, delete: if false;
+    }
+
+    // --------------------------------------------------
+    // DENY EVERYTHING NOT EXPLICITLY ALLOWED
+    // --------------------------------------------------
+
+    match /{document=**} {
+      allow read, write: if false;
     }
   }
 }
-

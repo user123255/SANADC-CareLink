@@ -1,4 +1,3 @@
-
 import type { Timestamp } from "firebase/firestore";
 
 export type UserRole = "patient" | "healthWorker" | "admin";
@@ -32,7 +31,6 @@ export type PatientProfileUpdate = {
   facility?: string;
 };
 
-// APPOINTMENTS
 export type AppointmentStatus =
   | "pending"
   | "scheduled"
@@ -52,7 +50,6 @@ export interface Appointment {
   updatedAt?: Timestamp | null;
 }
 
-// MESSAGES
 export type MessageSender = "patient" | "healthWorker";
 
 export interface Message {
@@ -65,7 +62,7 @@ export interface Message {
   readAt?: Timestamp | null;
 }
 
-// CONVERSATIONS
+// Conversation types
 export type ConversationStatus = "active" | "closed";
 
 export interface Conversation {
@@ -80,7 +77,6 @@ export interface Conversation {
   updatedAt: Timestamp | null;
 }
 
-// REFERRALS
 export type ReferralStatus =
   | "pending"
   | "accepted"
@@ -99,7 +95,6 @@ export interface Referral {
   updatedAt: Timestamp | null;
 }
 
-// HEALTH CONTENT
 export type HealthContentCategory =
   | "pregnancy"
   | "antenatal-care"
@@ -129,7 +124,6 @@ export interface HealthContent {
   publishedAt: Timestamp | null;
 }
 
-// REMINDERS
 export type ReminderType =
   | "appointment"
   | "followUp"
@@ -156,7 +150,6 @@ export interface Reminder {
   updatedAt: Timestamp | null;
 }
 
-// CONSENT
 export type ConsentType =
   | "platform"
   | "healthcareCommunication"
@@ -176,7 +169,6 @@ export interface ConsentRecord {
   withdrawnAt: Timestamp | null;
 }
 
-// AUDIT LOGS
 export type AuditAction =
   | "account_created"
   | "account_updated"
@@ -202,3 +194,4 @@ export interface AuditLog {
   details: string;
   createdAt: Timestamp | null;
 }
+
