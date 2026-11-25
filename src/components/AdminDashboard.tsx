@@ -1,0 +1,1150 @@
+
+import { useEffect, useMemo, useState } from "react";
+import {
+  Activity,
+  Bell,
+  BookOpen,
+  CalendarDays,
+  CheckCircle2,
+  ChevronRight,
+  ClipboardList,
+  FileCheck2,
+  HeartPulse,
+  LayoutDashboard,
+  LogOut,
+  Menu,
+  Search,
+  Settings,
+  ShieldCheck,
+  Users,
+  UserRound,
+  X,
+} from "lucide-react";
+
+import { AdminAppointmentsSection, AdminHealthContentSection } from "./AdminWorkspaces";
+import { getAdminAppointments } from "../services/appointments";
+import type { UserProfile } from "../types";
+import {
+  getPendingStaffApplications,
+  reviewStaffApplication,
+  type StaffApplication,
+  type StaffApplicationDecision,
+} from "../services/staffReview";
+
+import {
+  assignPatientToWorker,
+  getAdminPatients,
+  getActiveHealthWorkers,
+} from "../services/users";
+
+interface AdminDashboardProps {
+  profile: UserProfile;
+  onSignOut: () => void;
+}
+
+type AdminSection =
+  | "overview"
+  | "applications"
+  | "patients"
+  | "workers"
+  | "appointments"
+  | "content"
+  | "settings";
+
+const navigation: {
+  id: AdminSection;
+  label: string;
+  icon: typeof LayoutDashboard;
+}[] = [
+  { id: "overview", label: "Overview", icon: LayoutDashboard },
+  { id: "applications", label: "Staff applications", icon: FileCheck2 },
+  { id: "patients", label: "Patients", icon: Users },
+  { id: "workers", label: "Healthcare workers", icon: UserRound },
+  { id: "appointments", label: "Appointments", icon: CalendarDays },
+  { id: "content", label: "Health content", icon: BookOpen },
+  { id: "settings", label: "Settings", icon: Settings },
+];
+
+const sectionTitles: Record<AdminSection, string> = {
+  overview: "Dashboard overview",
+  applications: "Staff applications",
+  patients: "Patient management",
+  workers: "Healthcare workers",
+  appointments: "Appointment management",
+  content: "Health content",
+  settings: "Administrator settings",
+};
+
+export default function AdminDashboard({
+  profile,
+  onSignOut,
+}: AdminDashboardProps) {
+  const [activeSection, setActiveSection] =
+    useState<AdminSection>("overview");
+  const [mobileMenuOpen, setMobileMenuOpen] = useState(false);
+  const [search, setSearch] = useState("");
+
+  const filteredNavigation = useMemo(
+    () =>
+      navigation.filter((item) =>
+        item.label.toLowerCase().includes(search.toLowerCase())
+      ),
+    [search]
+  );
+
+  function changeSection(section: AdminSection) {
+    setActiveSection(section);
+    setMobileMenuOpen(false);
+    setSearch("");
+  }
+
+  return (
+    <div className="min-h-screen bg-slate-50 text-slate-800">
+      {mobileMenuOpen && (
+        <button
+          aria-label="Close navigation overlay"
+          onClick={() => setMobileMenuOpen(false)}
+          className="fixed inset-0 z-40 bg-slate-950/40 lg:hidden"
+        />
+      )}
+
+      <aside
+        className={`fixed inset-y-0 left-0 z-50 flex w-72 flex-col border-r border-slate-200 bg-white transition-transform duration-300 lg:translate-x-0 ${
+          mobileMenuOpen ? "translate-x-0" : "-translate-x-full"
+        }`}
+      >
+        <div className="flex h-20 items-center justify-between border-b border-slate-100 px-6">
+          <div className="flex items-center gap-3">
+            <div className="flex h-11 w-11 items-center justify-center rounded-2xl bg-blue-700 text-white shadow-lg shadow-blue-200">
+              <HeartPulse size={24} />
+            </div>
+            <div>
+              <h1 className="text-xl font-extrabold tracking-tight text-slate-900">
+                SANAD
+              </h1>
+              <p className="text-[10px] font-bold uppercase tracking-[0.2em] text-blue-600">
+                CareLink Admin
+              </p>
+            </div>
+          </div>
+
+          <button
+            onClick={() => setMobileMenuOpen(false)}
+            className="rounded-lg p-2 text-slate-500 hover:bg-slate-100 lg:hidden"
+            aria-label="Close menu"
+          >
+            <X size={21} />
+          </button>
+        </div>
+
+        <div className="px-5 py-6">
+          <p className="mb-3 px-3 text-[10px] font-bold uppercase tracking-[0.18em] text-slate-400">
+            Workspace
+          </p>
+
+          <div className="mb-4">
+            <div className="relative">
+              <Search
+                size={16}
+                className="absolute left-3 top-1/2 -translate-y-1/2 text-slate-400"
+              />
+              <input
+                value={search}
+                onChange={(event) => setSearch(event.target.value)}
+                placeholder="Find a section..."
+                className="w-full rounded-xl border border-slate-200 bg-slate-50 py-2.5 pl-9 pr-3 text-sm outline-none transition focus:border-blue-400 focus:ring-2 focus:ring-blue-100"
+              />
+            </div>
+          </div>
+
+          <nav className="space-y-1">
+            {filteredNavigation.map((item) => {
+              const Icon = item.icon;
+              const active = activeSection === item.id;
+
+              return (
+                <button
+                  key={item.id}
+                  onClick={() => changeSection(item.id)}
+                  className={`flex w-full items-center gap-3 rounded-xl px-3 py-3 text-left text-sm font-semibold transition-all duration-200 ${
+                    active
+                      ? "bg-blue-700 text-white shadow-md shadow-blue-200"
+                      : "text-slate-600 hover:bg-blue-50 hover:text-blue-700"
+                  }`}
+                >
+                  <Icon size={19} />
+                  <span className="flex-1">{item.label}</span>
+                  {active && <ChevronRight size={16} />}
+                </button>
+              );
+            })}
+            {filteredNavigation.length === 0 && (
+              <p className="px-3 py-4 text-sm text-slate-400">
+                No sections found.
+              </p>
+            )}
+          </nav>
+        </div>
+
+        <div className="mt-auto border-t border-slate-100 p-5">
+          <div className="mb-4 flex items-center gap-3 rounded-2xl bg-blue-50 p-3">
+            <div className="flex h-10 w-10 items-center justify-center rounded-full bg-blue-700 font-bold text-white">
+              {profile.fullName.charAt(0).toUpperCase()}
+            </div>
+            <div className="min-w-0 flex-1">
+              <p className="truncate text-sm font-bold text-slate-900">
+                {profile.fullName}
+              </p>
+              <p className="text-xs text-blue-700">Administrator</p>
+            </div>
+            <ShieldCheck size={18} className="text-blue-700" />
+          </div>
+
+          <button
+            onClick={onSignOut}
+            className="flex w-full items-center gap-3 rounded-xl px-3 py-3 text-sm font-semibold text-slate-600 transition hover:bg-red-50 hover:text-red-600"
+          >
+            <LogOut size={19} />
+            Sign out
+          </button>
+        </div>
+      </aside>
+
+      <main className="min-h-screen lg:pl-72">
+        <header className="sticky top-0 z-30 flex h-20 items-center justify-between border-b border-slate-200 bg-white/90 px-4 backdrop-blur-xl sm:px-7 lg:px-10">
+          <div className="flex items-center gap-3">
+            <button
+              onClick={() => setMobileMenuOpen(true)}
+              className="rounded-xl border border-slate-200 p-2 text-slate-600 hover:bg-slate-50 lg:hidden"
+              aria-label="Open menu"
+            >
+              <Menu size={21} />
+            </button>
+
+            <div>
+              <p className="text-xs font-medium text-slate-400">
+                SANAD CareLink / Administrator
+              </p>
+              <h2 className="text-lg font-bold text-slate-900 sm:text-xl">
+                {sectionTitles[activeSection]}
+              </h2>
+            </div>
+          </div>
+
+          <div className="flex items-center gap-3">
+            <button
+              aria-label="Notifications"
+              className="relative rounded-xl border border-slate-200 p-2.5 text-slate-500 transition hover:bg-blue-50 hover:text-blue-700"
+            >
+              <Bell size={19} />
+            </button>
+            <div className="hidden text-right sm:block">
+              <p className="text-sm font-bold text-slate-800">
+                {profile.fullName}
+              </p>
+              <p className="text-xs text-slate-400">Platform administrator</p>
+            </div>
+          </div>
+        </header>
+
+        <div className="mx-auto max-w-7xl space-y-7 px-4 py-7 sm:px-7 lg:px-10 lg:py-9">
+          {activeSection === "overview" && (
+            <OverviewSection
+              profile={profile}
+              onNavigate={changeSection}
+            />
+          )}
+
+          {activeSection === "applications" && (<StaffApplicationsSection />)}
+
+          {activeSection === "patients" && <PatientManagementSection />}
+
+          {activeSection === "workers" && <HealthcareWorkersSection />}
+
+          {activeSection === "appointments" && <AdminAppointmentsSection />}
+
+          {activeSection === "content" && <AdminHealthContentSection profile={profile} />}
+
+          {activeSection === "settings" && (
+            <SettingsSection profile={profile} />
+          )}
+        </div>
+      </main>
+    </div>
+  );
+}
+
+function StaffApplicationsSection() {
+  const [applications, setApplications] = useState<StaffApplication[]>([]);
+  const [loading, setLoading] = useState(true);
+  const [reviewing, setReviewing] = useState<{
+    uid: string;
+    decision: StaffApplicationDecision;
+  } | null>(null);
+  const [error, setError] = useState("");
+  const [success, setSuccess] = useState("");
+
+  async function loadApplications() {
+    setLoading(true);
+    setError("");
+
+    try {
+      const records = await getPendingStaffApplications();
+      setApplications(records);
+    } catch (err) {
+      console.error("Staff applications loading error:", err);
+      setError(
+        err instanceof Error
+          ? err.message
+          : "Could not load staff applications. Check your connection and administrator permissions."
+      );
+    } finally {
+      setLoading(false);
+    }
+  }
+
+  useEffect(() => {
+    void loadApplications();
+  }, []);
+
+  async function handleReview(
+    applicationUid: string,
+    decision: StaffApplicationDecision
+  ) {
+    setReviewing({ uid: applicationUid, decision });
+    setError("");
+    setSuccess("");
+
+    try {
+      await reviewStaffApplication(applicationUid, decision);
+
+      setApplications((current) =>
+        current.filter((application) => application.uid !== applicationUid)
+      );
+
+      setSuccess(
+        decision === "approve"
+          ? "Application approved. The healthcare worker account is now active."
+          : "Application rejected successfully."
+      );
+    } catch (err) {
+      console.error("Staff application review error:", err);
+      setError(
+        err instanceof Error
+          ? err.message
+          : "The application could not be reviewed. Please try again."
+      );
+    } finally {
+      setReviewing(null);
+    }
+  }
+
+  return (
+    <section className="space-y-6">
+      <div className="flex flex-wrap items-center justify-between gap-3">
+        <div>
+          <h2 className="text-xl font-bold text-slate-900">
+            Healthcare worker applications
+          </h2>
+          <p className="mt-1 text-sm text-slate-500">
+            Review applications before granting healthcare workers access to SANAD.
+          </p>
+        </div>
+
+        <button
+          onClick={() => void loadApplications()}
+          disabled={loading || reviewing !== null}
+          className="rounded-xl border border-slate-200 bg-white px-4 py-2.5 text-sm font-semibold text-slate-700 hover:bg-slate-50 disabled:opacity-50"
+        >
+          {loading ? "Loading..." : "Refresh"}
+        </button>
+      </div>
+
+      {error && (
+        <div className="rounded-xl border border-red-200 bg-red-50 p-4 text-sm text-red-700">
+          {error}
+        </div>
+      )}
+
+      {success && (
+        <div className="rounded-xl border border-green-200 bg-green-50 p-4 text-sm text-green-700">
+          {success}
+        </div>
+      )}
+
+      <div className="flex items-center gap-3 rounded-2xl border border-blue-100 bg-blue-50 p-5">
+        <div className="rounded-xl bg-white p-3 text-blue-700">
+          <FileCheck2 size={23} />
+        </div>
+        <div>
+          <p className="text-sm font-medium text-blue-700">
+            Pending applications
+          </p>
+          <p className="text-2xl font-bold text-blue-900">
+            {loading ? "—" : applications.length}
+          </p>
+        </div>
+      </div>
+
+      {loading ? (
+        <div className="rounded-2xl border border-slate-200 bg-white p-8 text-center text-sm text-slate-500">
+          Loading staff applications...
+        </div>
+      ) : applications.length === 0 ? (
+        <div className="rounded-2xl border border-slate-200 bg-white p-10 text-center">
+          <CheckCircle2 className="mx-auto mb-3 text-green-500" size={36} />
+          <h3 className="font-bold text-slate-900">
+            No pending applications
+          </h3>
+          <p className="mt-2 text-sm text-slate-500">
+            New healthcare worker applications will appear here when submitted.
+          </p>
+        </div>
+      ) : (
+        <div className="space-y-4">
+          {applications.map((application) => (
+            <article
+              key={application.uid}
+              className="rounded-2xl border border-slate-200 bg-white p-5 sm:p-6"
+            >
+              <div className="flex flex-col gap-5 lg:flex-row lg:items-center lg:justify-between">
+                <div className="min-w-0 space-y-2">
+                  <div className="flex flex-wrap items-center gap-2">
+                    <h3 className="text-lg font-bold text-slate-900">
+                      {application.fullName || "Name not provided"}
+                    </h3>
+                    <span className="rounded-full bg-amber-50 px-3 py-1 text-xs font-semibold text-amber-700">
+                      Pending review
+                    </span>
+                  </div>
+
+                  <p className="text-sm text-slate-600">
+                    {application.email}
+                  </p>
+                  <p className="text-sm text-slate-600">
+                    Facility: {application.facility || "Not specified"}
+                  </p>
+                  <p className="text-xs text-slate-400">
+                    Submitted:{" "}
+                    {application.createdAt
+                      ? application.createdAt.toDate().toLocaleString()
+                      : "Date unavailable"}
+                  </p>
+                </div>
+
+                <div className="flex flex-wrap gap-3">
+                  <button
+                    onClick={() =>
+                      void handleReview(application.uid, "approve")
+                    }
+                    disabled={reviewing !== null}
+                    className="inline-flex items-center justify-center gap-2 rounded-xl bg-green-700 px-5 py-3 text-sm font-bold text-white transition hover:bg-green-800 disabled:cursor-not-allowed disabled:opacity-50"
+                  >
+                    <CheckCircle2 size={17} />
+                    {reviewing?.uid === application.uid &&
+                    reviewing.decision === "approve"
+                      ? "Approving..."
+                      : "Approve"}
+                  </button>
+
+                  <button
+                    onClick={() =>
+                      void handleReview(application.uid, "reject")
+                    }
+                    disabled={reviewing !== null}
+                    className="inline-flex items-center justify-center gap-2 rounded-xl border border-red-200 bg-white px-5 py-3 text-sm font-bold text-red-700 transition hover:bg-red-50 disabled:cursor-not-allowed disabled:opacity-50"
+                  >
+                    <X size={17} />
+                    {reviewing?.uid === application.uid &&
+                    reviewing.decision === "reject"
+                      ? "Rejecting..."
+                      : "Reject"}
+                  </button>
+                </div>
+              </div>
+            </article>
+          ))}
+        </div>
+      )}
+    </section>
+  );
+}
+function PatientManagementSection() {
+  const [patients, setPatients] = useState<UserProfile[]>([]);
+  const [workers, setWorkers] = useState<UserProfile[]>([]);
+  const [loading, setLoading] = useState(true);
+  const [savingUid, setSavingUid] = useState("");
+  const [error, setError] = useState("");
+  const [success, setSuccess] = useState("");
+
+  async function loadData() {
+    setLoading(true);
+    setError("");
+
+    try {
+      const [patientRecords, workerRecords] = await Promise.all([
+        getAdminPatients(),
+        getActiveHealthWorkers(),
+      ]);
+
+      setPatients(patientRecords);
+      setWorkers(workerRecords);
+    } catch (err) {
+      console.error("Patient management loading error:", err);
+      setError("Could not load patient or healthcare worker records. Check your access permissions and connection.");
+    } finally {
+      setLoading(false);
+    }
+  }
+
+  useEffect(() => {
+    void loadData();
+  }, []);
+
+  async function handleAssignment(
+    patientUid: string,
+    workerUid: string
+  ) {
+    setSavingUid(patientUid);
+    setError("");
+    setSuccess("");
+
+    try {
+      await assignPatientToWorker(patientUid, workerUid || null);
+
+      setPatients((current) =>
+        current.map((patient) =>
+          patient.uid === patientUid
+            ? { ...patient, assignedWorkerUid: workerUid || null }
+            : patient
+        )
+      );
+
+      setSuccess("Patient assignment updated successfully.");
+    } catch (err) {
+      console.error("Patient assignment error:", err);
+      setError(
+        err instanceof Error
+          ? err.message
+          : "Could not update the patient assignment."
+      );
+    } finally {
+      setSavingUid("");
+    }
+  }
+
+  return (
+    <section className="space-y-6">
+      <div className="flex flex-wrap items-center justify-between gap-3">
+        <div>
+          <h2 className="text-xl font-bold text-slate-900">
+            Patient management
+          </h2>
+          <p className="mt-1 text-sm text-slate-500">
+            View registered patients and assign their healthcare workers.
+          </p>
+        </div>
+
+        <button
+          onClick={() => void loadData()}
+          disabled={loading}
+          className="rounded-xl border border-slate-200 bg-white px-4 py-2.5 text-sm font-semibold text-slate-700 hover:bg-slate-50 disabled:opacity-50"
+        >
+          {loading ? "Loading..." : "Refresh"}
+        </button>
+      </div>
+
+      {error && (
+        <div className="rounded-xl border border-red-200 bg-red-50 p-4 text-sm text-red-700">
+          {error}
+        </div>
+      )}
+
+      {success && (
+        <div className="rounded-xl border border-green-200 bg-green-50 p-4 text-sm text-green-700">
+          {success}
+        </div>
+      )}
+
+      <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
+        <div className="rounded-2xl border border-slate-200 bg-white p-5">
+          <p className="text-sm text-slate-500">Registered patients</p>
+          <p className="mt-2 text-3xl font-extrabold text-slate-900">
+            {loading ? "—" : patients.length}
+          </p>
+        </div>
+
+        <div className="rounded-2xl border border-slate-200 bg-white p-5">
+          <p className="text-sm text-slate-500">Active healthcare workers</p>
+          <p className="mt-2 text-3xl font-extrabold text-slate-900">
+            {loading ? "—" : workers.length}
+          </p>
+        </div>
+      </div>
+
+      <div className="overflow-hidden rounded-2xl border border-slate-200 bg-white">
+        <div className="border-b border-slate-100 p-5">
+          <h3 className="font-bold text-slate-900">
+            Patient assignments
+          </h3>
+          <p className="mt-1 text-xs text-slate-500">
+            Select an active healthcare worker for each patient.
+          </p>
+        </div>
+
+        {loading ? (
+          <p className="p-6 text-sm text-slate-500">
+            Loading patient records...
+          </p>
+        ) : patients.length === 0 ? (
+          <p className="p-6 text-sm text-slate-500">
+            No registered patients were found.
+          </p>
+        ) : (
+          <div className="divide-y divide-slate-100">
+            {patients.map((patient) => {
+              const assignedWorker = workers.find(
+                (worker) => worker.uid === patient.assignedWorkerUid
+              );
+
+              return (
+                <div
+                  key={patient.uid}
+                  className="flex flex-col gap-4 p-5 sm:flex-row sm:items-center sm:justify-between"
+                >
+                  <div className="min-w-0">
+                    <p className="font-bold text-slate-900">
+                      {patient.fullName}
+                    </p>
+                    <p className="mt-1 text-xs text-slate-500">
+                      {patient.email}
+                    </p>
+                    <p className="mt-1 text-xs text-slate-500">
+                      {patient.facility}
+                    </p>
+                    <p className="mt-2 text-xs font-medium text-blue-700">
+                      {assignedWorker
+                        ? `Assigned to ${assignedWorker.fullName}`
+                        : patient.assignedWorkerUid
+                          ? "Assigned worker unavailable"
+                          : "Not yet assigned"}
+                    </p>
+                  </div>
+
+                  <div className="w-full sm:max-w-xs">
+                    <label
+                      htmlFor={`worker-${patient.uid}`}
+                      className="mb-2 block text-xs font-semibold text-slate-600"
+                    >
+                      Healthcare worker
+                    </label>
+
+                    <select
+                      id={`worker-${patient.uid}`}
+                      value={patient.assignedWorkerUid ?? ""}
+                      disabled={
+                        savingUid === patient.uid || workers.length === 0
+                      }
+                      onChange={(event) =>
+                        void handleAssignment(
+                          patient.uid,
+                          event.target.value
+                        )
+                      }
+                      className="w-full rounded-xl border border-slate-200 bg-white px-3 py-3 text-sm outline-none focus:border-blue-500 disabled:opacity-50"
+                    >
+                      <option value="">Unassigned</option>
+
+                      {workers.map((worker) => (
+                        <option key={worker.uid} value={worker.uid}>
+                          {worker.fullName}
+                        </option>
+                      ))}
+                    </select>
+
+                    {savingUid === patient.uid && (
+                      <p className="mt-2 text-xs text-blue-600">
+                        Saving assignment...
+                      </p>
+                    )}
+                  </div>
+                </div>
+              );
+            })}
+          </div>
+        )}
+      </div>
+
+      {workers.length === 0 && !loading && (
+        <p className="rounded-xl bg-amber-50 p-4 text-sm text-amber-800">
+          No active healthcare workers are available for assignment.
+        </p>
+      )}
+    </section>
+  );
+}
+
+
+function HealthcareWorkersSection() {
+  const [workers, setWorkers] = useState<UserProfile[]>([]);
+  const [patients, setPatients] = useState<UserProfile[]>([]);
+  const [loading, setLoading] = useState(true);
+  const [error, setError] = useState("");
+
+  async function loadData() {
+    setLoading(true);
+    setError("");
+
+    try {
+      const [workerRecords, patientRecords] = await Promise.all([
+        getActiveHealthWorkers(),
+        getAdminPatients(),
+      ]);
+
+      setWorkers(workerRecords);
+      setPatients(patientRecords);
+    } catch (err) {
+      console.error("Healthcare workers loading error:", err);
+      setError(
+        err instanceof Error
+          ? err.message
+          : "Could not load healthcare worker records."
+      );
+    } finally {
+      setLoading(false);
+    }
+  }
+
+  useEffect(() => {
+    void loadData();
+  }, []);
+
+  return (
+    <section className="space-y-6">
+      <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
+        <div>
+          <h2 className="text-xl font-bold text-slate-900">
+            Healthcare workers
+          </h2>
+          <p className="mt-1 text-sm text-slate-500">
+            View active healthcare workers, facilities and assigned patients.
+          </p>
+        </div>
+
+        <button
+          type="button"
+          onClick={() => void loadData()}
+          disabled={loading}
+          className="rounded-xl border border-slate-200 bg-white px-4 py-2.5 text-sm font-semibold text-slate-700 hover:bg-slate-50 disabled:opacity-50"
+        >
+          {loading ? "Refreshing..." : "Refresh"}
+        </button>
+      </div>
+
+      {error && (
+        <div className="rounded-xl border border-red-200 bg-red-50 p-4 text-sm text-red-700">
+          {error}
+        </div>
+      )}
+
+      <div className="grid gap-4 sm:grid-cols-2">
+        <div className="rounded-2xl border border-slate-200 bg-white p-5">
+          <div className="flex items-center gap-3">
+            <div className="rounded-xl bg-blue-50 p-3 text-blue-700">
+              <UserRound size={22} />
+            </div>
+            <div>
+              <p className="text-sm text-slate-500">Active healthcare workers</p>
+              <p className="text-2xl font-bold text-slate-900">
+                {loading ? "—" : workers.length}
+              </p>
+            </div>
+          </div>
+        </div>
+
+        <div className="rounded-2xl border border-slate-200 bg-white p-5">
+          <div className="flex items-center gap-3">
+            <div className="rounded-xl bg-emerald-50 p-3 text-emerald-700">
+              <Users size={22} />
+            </div>
+            <div>
+              <p className="text-sm text-slate-500">Assigned patients</p>
+              <p className="text-2xl font-bold text-slate-900">
+                {loading
+                  ? "—"
+                  : patients.filter((patient) => patient.assignedWorkerUid).length}
+              </p>
+            </div>
+          </div>
+        </div>
+      </div>
+
+      <div className="overflow-hidden rounded-2xl border border-slate-200 bg-white">
+        <div className="border-b border-slate-100 p-5">
+          <h3 className="font-bold text-slate-900">
+            Active worker directory
+          </h3>
+          <p className="mt-1 text-sm text-slate-500">
+            Healthcare workers registered and activated in SANAD CareLink.
+          </p>
+        </div>
+
+        {loading ? (
+          <p className="p-6 text-sm text-slate-500">
+            Loading healthcare workers...
+          </p>
+        ) : workers.length === 0 ? (
+          <div className="p-8 text-center">
+            <UserRound className="mx-auto mb-3 text-slate-300" size={32} />
+            <p className="font-semibold text-slate-700">
+              No active healthcare workers found
+            </p>
+            <p className="mt-1 text-sm text-slate-500">
+              Approved healthcare workers will appear here.
+            </p>
+          </div>
+        ) : (
+          <div className="divide-y divide-slate-100">
+            {workers.map((worker) => {
+              const assignedPatients = patients.filter(
+                (patient) => patient.assignedWorkerUid === worker.uid
+              ).length;
+
+              return (
+                <div
+                  key={worker.uid}
+                  className="flex flex-col gap-4 p-5 sm:flex-row sm:items-center sm:justify-between"
+                >
+                  <div className="min-w-0">
+                    <p className="font-bold text-slate-900">
+                      {worker.fullName}
+                    </p>
+                    <p className="mt-1 text-sm text-slate-500">
+                      {worker.email}
+                    </p>
+                    <p className="mt-1 text-sm text-slate-500">
+                      {worker.facility || "Facility not specified"}
+                    </p>
+                  </div>
+
+                  <div className="flex items-center gap-3">
+                    <div className="rounded-xl bg-emerald-50 px-4 py-3 text-center">
+                      <p className="text-xl font-bold text-emerald-700">
+                        {assignedPatients}
+                      </p>
+                      <p className="text-xs font-medium text-emerald-700">
+                        Assigned patients
+                      </p>
+                    </div>
+
+                    <span className="rounded-full bg-green-50 px-3 py-1.5 text-xs font-semibold text-green-700">
+                      Active
+                    </span>
+                  </div>
+                </div>
+              );
+            })}
+          </div>
+        )}
+      </div>
+    </section>
+  );
+}
+
+
+
+
+function OverviewSection({
+  profile,
+  onNavigate,
+}: {
+  profile: UserProfile;
+  onNavigate: (section: AdminSection) => void;
+}) {
+  const [counts, setCounts] = useState<{
+    patients: number;
+    workers: number;
+    applications: number;
+    appointments: number;
+  } | null>(null);
+  const [loading, setLoading] = useState(true);
+  const [loadError, setLoadError] = useState("");
+
+  useEffect(() => {
+    let active = true;
+
+    async function loadStats() {
+      try {
+        const [patients, workers, applications, appointments] =
+          await Promise.all([
+            getAdminPatients(),
+            getActiveHealthWorkers(),
+            getPendingStaffApplications(),
+            getAdminAppointments(),
+          ]);
+
+        if (active) {
+          setCounts({
+            patients: patients.length,
+            workers: workers.length,
+            applications: applications.length,
+            appointments: appointments.length,
+          });
+          setLoadError("");
+        }
+      } catch (error) {
+        if (active) {
+          setLoadError(
+            error instanceof Error ? error.message : "Unable to load statistics."
+          );
+        }
+      } finally {
+        if (active) setLoading(false);
+      }
+    }
+
+    void loadStats();
+    return () => { active = false; };
+  }, []);
+
+  const stats = [
+    {
+      title: "Total patients",
+      value: loading ? "…" : loadError ? "—" : String(counts?.patients ?? 0),
+      note: "Registered patient accounts",
+      icon: Users,
+    },
+    {
+      title: "Healthcare workers",
+      value: loading ? "…" : loadError ? "—" : String(counts?.workers ?? 0),
+      note: "Active healthcare worker accounts",
+      icon: UserRound,
+    },
+    {
+      title: "Pending applications",
+      value: loading ? "…" : loadError ? "—" : String(counts?.applications ?? 0),
+      note: "Applications awaiting review",
+      icon: ClipboardList,
+    },
+    {
+      title: "Appointments",
+      value: loading ? "…" : loadError ? "—" : String(counts?.appointments ?? 0),
+      note: "Appointments recorded on the platform",
+      icon: CalendarDays,
+    },
+  ];
+
+  return (
+    <>
+      <section className="relative overflow-hidden rounded-3xl bg-gradient-to-br from-blue-800 via-blue-700 to-sky-600 p-7 text-white shadow-xl shadow-blue-100 sm:p-9">
+        <div className="relative z-10 max-w-2xl">
+          <div className="mb-4 inline-flex items-center gap-2 rounded-full border border-white/20 bg-white/10 px-3 py-1.5 text-xs font-semibold">
+            <ShieldCheck size={15} />
+            Administrator workspace
+          </div>
+          <h1 className="text-2xl font-extrabold tracking-tight sm:text-3xl">
+            Welcome back, {profile.fullName.split(" ")[0]}.
+          </h1>
+          <p className="mt-3 max-w-xl text-sm leading-6 text-blue-100 sm:text-base">
+            Manage the SANAD CareLink platform, support healthcare teams
+            and help strengthen maternal healthcare services in the
+            community.
+          </p>
+          <button
+            onClick={() => onNavigate("applications")}
+            className="mt-6 inline-flex items-center gap-2 rounded-xl bg-white px-5 py-3 text-sm font-bold text-blue-800 transition hover:bg-blue-50"
+          >
+            View staff applications
+            <ChevronRight size={17} />
+          </button>
+        </div>
+
+        <div className="pointer-events-none absolute -right-12 -top-20 h-72 w-72 rounded-full border-[35px] border-white/10" />
+        <div className="pointer-events-none absolute -bottom-28 right-28 h-64 w-64 rounded-full bg-white/10 blur-2xl" />
+        <HeartPulse
+          size={150}
+          className="pointer-events-none absolute bottom-3 right-7 hidden text-white/10 sm:block"
+        />
+      </section>
+
+      <section>
+        <div className="mb-4 flex items-center justify-between">
+          <div>
+            <h3 className="text-lg font-bold text-slate-900">
+              Platform overview
+            </h3>
+            <p className="mt-1 text-sm text-slate-500">
+              A live summary of SANAD CareLink platform activity.
+            </p>
+          </div>
+          <span className="rounded-full bg-amber-50 px-3 py-1.5 text-xs font-semibold text-amber-700">
+            Awaiting live data
+          </span>
+        </div>
+
+        {loadError && (
+          <p className="mb-4 rounded-xl border border-red-200 bg-red-50 px-4 py-3 text-sm text-red-700">
+            Could not load platform statistics: {loadError}
+          </p>
+        )}
+        <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 xl:grid-cols-4">
+          {stats.map((stat) => {
+            const Icon = stat.icon;
+
+            return (
+              <div
+                key={stat.title}
+                className="rounded-2xl border border-slate-200 bg-white p-5 shadow-sm transition duration-300 hover:-translate-y-1 hover:shadow-lg"
+              >
+                <div className="flex items-center justify-between">
+                  <div className="flex h-11 w-11 items-center justify-center rounded-xl bg-blue-50 text-blue-700">
+                    <Icon size={21} />
+                  </div>
+                  <Activity size={17} className="text-slate-300" />
+                </div>
+                <p className="mt-5 text-sm font-medium text-slate-500">
+                  {stat.title}
+                </p>
+                <p className="mt-1 text-3xl font-extrabold text-slate-900">
+                  {stat.value}
+                </p>
+                <p className="mt-2 text-xs text-slate-400">{stat.note}</p>
+              </div>
+            );
+          })}
+        </div>
+      </section>
+
+      <section>
+        <h3 className="mb-4 text-lg font-bold text-slate-900">
+          Management shortcuts
+        </h3>
+        <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 xl:grid-cols-3">
+          {[
+            {
+              title: "Review staff applications",
+              description: "Review submitted staff registration requests.",
+              icon: FileCheck2,
+              section: "applications" as const,
+            },
+            {
+              title: "Patient directory",
+              description: "Access the patient management workspace.",
+              icon: Users,
+              section: "patients" as const,
+            },
+            {
+              title: "Healthcare teams",
+              description: "View the healthcare worker workspace.",
+              icon: UserRound,
+              section: "workers" as const,
+            },
+          ].map((item) => {
+            const Icon = item.icon;
+
+            return (
+              <button
+                key={item.title}
+                onClick={() => onNavigate(item.section)}
+                className="group flex items-center gap-4 rounded-2xl border border-slate-200 bg-white p-5 text-left transition hover:border-blue-200 hover:shadow-md"
+              >
+                <div className="flex h-12 w-12 shrink-0 items-center justify-center rounded-xl bg-blue-50 text-blue-700 transition group-hover:bg-blue-700 group-hover:text-white">
+                  <Icon size={22} />
+                </div>
+                <div className="min-w-0 flex-1">
+                  <h4 className="font-bold text-slate-900">{item.title}</h4>
+                  <p className="mt-1 text-xs leading-5 text-slate-500">
+                    {item.description}
+                  </p>
+                </div>
+                <ChevronRight
+                  size={18}
+                  className="text-slate-300 transition group-hover:translate-x-1 group-hover:text-blue-700"
+                />
+              </button>
+            );
+          })}
+        </div>
+      </section>
+
+      <section className="rounded-2xl border border-blue-100 bg-blue-50/70 p-5 sm:p-6">
+        <div className="flex items-start gap-3">
+          <div className="rounded-xl bg-white p-2.5 text-blue-700 shadow-sm">
+            <ShieldCheck size={21} />
+          </div>
+          <div>
+            <h3 className="font-bold text-slate-900">
+              Privacy and responsible access
+            </h3>
+            <p className="mt-1 text-sm leading-6 text-slate-600">
+              SANAD CareLink handles sensitive maternal health information.
+              Administrative access must remain limited to authorized
+              personnel, with secure role verification and auditable
+              management actions.
+            </p>
+          </div>
+        </div>
+      </section>
+    </>
+  );
+}
+
+
+function SettingsSection({ profile }: { profile: UserProfile }) {
+  return (
+    <section className="max-w-2xl rounded-3xl border border-slate-200 bg-white p-6 shadow-sm sm:p-8">
+      <div className="flex items-center gap-3">
+        <div className="flex h-12 w-12 items-center justify-center rounded-xl bg-blue-50 text-blue-700">
+          <Settings size={23} />
+        </div>
+        <div>
+          <h3 className="text-lg font-bold text-slate-900">
+            Administrator profile
+          </h3>
+          <p className="text-sm text-slate-500">
+            Your account information
+          </p>
+        </div>
+      </div>
+
+      <div className="mt-7 space-y-5">
+        <ProfileField label="Full name" value={profile.fullName} />
+        <ProfileField label="Email address" value={profile.email} />
+        <ProfileField label="Facility" value={profile.facility || "Not specified"} />
+        <ProfileField label="Account role" value="Administrator" />
+        <ProfileField label="Account status" value={profile.accountStatus} />
+      </div>
+
+      <div className="mt-7 flex items-start gap-3 rounded-xl bg-blue-50 p-4">
+        <CheckCircle2 size={19} className="mt-0.5 shrink-0 text-blue-700" />
+        <p className="text-xs leading-5 text-blue-900">
+          Profile editing and security settings will be connected after
+          the administrator management backend is implemented.
+        </p>
+      </div>
+    </section>
+  );
+}
+
+function ProfileField({
+  label,
+  value,
+}: {
+  label: string;
+  value: string;
+}) {
+  return (
+    <div className="border-b border-slate-100 pb-4">
+      <p className="text-xs font-semibold uppercase tracking-wider text-slate-400">
+        {label}
+      </p>
+      <p className="mt-1 text-sm font-semibold text-slate-800">{value}</p>
+    </div>
+  );
+}
+
+
+
+
+
+

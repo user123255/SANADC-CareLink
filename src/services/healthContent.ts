@@ -7,6 +7,7 @@ import {
   orderBy,
   doc,
   updateDoc,
+  deleteDoc,
   serverTimestamp,
 } from "firebase/firestore";
 
@@ -152,4 +153,17 @@ export async function updateHealthContent(
   }
 
   await updateDoc(contentRef, safeUpdates);
+}
+
+
+/**
+ * Delete an educational content record.
+ * Firestore rules restrict this action to administrators.
+ */
+export async function deleteHealthContent(contentId: string): Promise<void> {
+  if (!contentId.trim()) {
+    throw new Error("A content ID is required.");
+  }
+
+  await deleteDoc(doc(db, "healthContent", contentId));
 }

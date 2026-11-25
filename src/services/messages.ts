@@ -8,10 +8,12 @@ import {
   doc,
   updateDoc,
   serverTimestamp,
+  onSnapshot,
+  type Unsubscribe,
 } from "firebase/firestore";
 
 import { db } from "../lib/firebase";
-import type { Message } from "../types";
+import type { Conversation, Message } from "../types";
 
 export type SendMessageInput = {
   conversationId: string;
@@ -21,23 +23,71 @@ export type SendMessageInput = {
 };
 
 /**
+ * Find an active patient-worker conversation or create one.
+ * Firestore rules verify the patient's assigned worker.
+ */
+export async function getOrCreatePatientConversation(
+  patientUid: string,
+  assignedWorkerUid: string
+): Promise<string> {
+  if (!patientUid.trim() || !assignedWorkerUid.trim()) {
+    throw new Error("A patient and assigned healthcare worker are required.");
+  }
+
+  if (patientUid === assignedWorkerUid) {
+    throw new Error("The assigned healthcare worker is invalid.");
+  }
+
+  const conversationsQuery = query(
+    collection(db, "conversations"),
+    where("patientUid", "==", patientUid),
+    where("assignedWorkerUid", "==", assignedWorkerUid),
+    where("status", "==", "active")
+  );
+
+  const snapshot = await getDocs(conversationsQuery);
+
+  if (!snapshot.empty) {
+    return snapshot.docs[0].id;
+  }
+
+  const conversationRef = await addDoc(collection(db, "conversations"), {
+    patientUid,
+    assignedWorkerUid,
+    participantUids: [patientUid, assignedWorkerUid],
+    status: "active",
+    lastMessageText: "",
+    lastMessageAt: null,
+    createdAt: serverTimestamp(),
+    updatedAt: serverTimestamp(),
+  });
+
+  return conversationRef.id;
+}
+
+/**
  * Send a message inside an existing conversation.
  */
 export async function sendMessage(
   input: SendMessageInput
 ): Promise<string> {
+  const text = input.text.trim();
+
+  if (!text) {
+    throw new Error("Please enter a message.");
+  }
+
+  if (text.length > 4000) {
+    throw new Error("Messages cannot exceed 4,000 characters.");
+  }
+
   const messageRef = await addDoc(
-    collection(
-      db,
-      "conversations",
-      input.conversationId,
-      "messages"
-    ),
+    collection(db, "conversations", input.conversationId, "messages"),
     {
       conversationId: input.conversationId,
       senderUid: input.senderUid,
       senderRole: input.senderRole,
-      text: input.text.trim(),
+      text,
       createdAt: serverTimestamp(),
       readAt: null,
     }
@@ -47,18 +97,40 @@ export async function sendMessage(
 }
 
 /**
- * Retrieve messages from a conversation.
+ * Subscribe to messages and receive updates in real time.
+ */
+export function subscribeToConversationMessages(
+  conversationId: string,
+  onMessages: (messages: Message[]) => void,
+  onError: (error: Error) => void
+): Unsubscribe {
+  const messagesQuery = query(
+    collection(db, "conversations", conversationId, "messages"),
+    orderBy("createdAt", "asc")
+  );
+
+  return onSnapshot(
+    messagesQuery,
+    (snapshot) => {
+      const messages = snapshot.docs.map((item) => ({
+        id: item.id,
+        ...item.data(),
+      })) as Message[];
+
+      onMessages(messages);
+    },
+    (error) => onError(error)
+  );
+}
+
+/**
+ * Retrieve messages from a conversation once.
  */
 export async function getConversationMessages(
   conversationId: string
 ): Promise<Message[]> {
   const messagesQuery = query(
-    collection(
-      db,
-      "conversations",
-      conversationId,
-      "messages"
-    ),
+    collection(db, "conversations", conversationId, "messages"),
     orderBy("createdAt", "asc")
   );
 
@@ -95,7 +167,7 @@ export async function markMessageAsRead(
  */
 export async function getPatientConversations(
   patientUid: string
-) {
+): Promise<Conversation[]> {
   const conversationsQuery = query(
     collection(db, "conversations"),
     where("patientUid", "==", patientUid),
@@ -107,7 +179,7 @@ export async function getPatientConversations(
   return snapshot.docs.map((item) => ({
     id: item.id,
     ...item.data(),
-  }));
+  } as Conversation));
 }
 
 /**
@@ -115,7 +187,7 @@ export async function getPatientConversations(
  */
 export async function getWorkerConversations(
   workerUid: string
-) {
+): Promise<Conversation[]> {
   const conversationsQuery = query(
     collection(db, "conversations"),
     where("assignedWorkerUid", "==", workerUid),
@@ -127,5 +199,5 @@ export async function getWorkerConversations(
   return snapshot.docs.map((item) => ({
     id: item.id,
     ...item.data(),
-  }));
+  } as Conversation));
 }

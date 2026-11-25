@@ -5,27 +5,33 @@ import {
   signInWithEmailAndPassword,
   sendPasswordResetEmail,
 } from "firebase/auth";
-import { createPatientProfile } from "../services/users";
 import {
   HeartHandshake,
-  ShieldCheck,
   Eye,
   EyeOff,
   ArrowRight,
   Heart,
   LockKeyhole,
+  Stethoscope,
 } from "lucide-react";
+
 import { auth } from "../lib/firebase";
+import { createPatientProfile } from "../services/users";
+import { createStaffApplication } from "../services/staffApplications";
+
+type AccountRole = "patient" | "healthWorker";
 
 export default function AuthScreen() {
   const [isRegistering, setIsRegistering] = useState(false);
   const [showPassword, setShowPassword] = useState(false);
+  const [role, setRole] = useState<AccountRole>("patient");
 
   const [fullName, setFullName] = useState("");
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
-  const [facility, setFacility] = useState("Kiryandongo Health Centre");
+  const [facility, setFacility] = useState("");
   const [language, setLanguage] = useState("English");
+  const [phone, setPhone] = useState("");
 
   const [error, setError] = useState("");
   const [success, setSuccess] = useState("");
@@ -33,55 +39,141 @@ export default function AuthScreen() {
 
   async function handleSubmit(e: FormEvent<HTMLFormElement>) {
     e.preventDefault();
-
     setError("");
     setSuccess("");
     setLoading(true);
 
+    let accountCreated = false;
+
     try {
+      const normalizedEmail = email.trim().toLowerCase();
+
       if (isRegistering) {
-        if (!fullName.trim()) {
+        if (fullName.trim().length < 2) {
           throw new Error("Please enter your full name.");
+        }
+
+        if (facility.trim().length < 2) {
+          throw new Error("Please enter your health facility.");
+        }
+
+        if (password.length < 6) {
+          throw new Error("Your password must contain at least 6 characters.");
         }
 
         const credential = await createUserWithEmailAndPassword(
           auth,
-          email.trim(),
+          normalizedEmail,
           password
         );
 
-        await createPatientProfile(credential.user.uid, {
-          fullName,
-          email: credential.user.email ?? email,
-          preferredLanguage: language,
-          facility,
-        });
-      } else {
-        await signInWithEmailAndPassword(
-          auth,
-          email.trim(),
-          password
-        );
+        accountCreated = true;
+
+        if (role === "patient") {
+          await createPatientProfile(credential.user.uid, {
+            fullName: fullName.trim(),
+            email: credential.user.email ?? normalizedEmail,
+            preferredLanguage: language.trim(),
+            facility: facility.trim(),
+            phone: phone.trim(),
+          });
+
+          setSuccess(
+            "Your patient account has been created successfully. Welcome to SANAD CareLink!"
+          );
+        } else {
+          await createStaffApplication({
+            uid: credential.user.uid,
+            fullName: fullName.trim(),
+            email: credential.user.email ?? normalizedEmail,
+            requestedRole: "healthWorker",
+            facility: facility.trim(),
+          });
+
+          setSuccess(
+            "Your healthcare worker application has been submitted successfully. You will receive access after an administrator reviews and approves your application."
+          );
+        }
+
+        setIsRegistering(false);
+        setPassword("");
+        setFullName("");
+        setPhone("");
+        setFacility("");
+        setRole("patient");
+        return;
       }
-    } catch (err: unknown) {
-      const message =
-        err instanceof Error ? err.message : "Something went wrong.";
 
-      setError(
-        message.includes("auth/email-already-in-use")
-          ? "This email already has an account. Please sign in."
-          : message.includes("auth/invalid-credential")
-          ? "Incorrect email or password."
-          : message.includes("auth/weak-password")
-          ? "Your password must contain at least 6 characters."
-          : message.includes("auth/invalid-email")
-          ? "Please enter a valid email address."
-          : message.includes("auth/network-request-failed")
-          ? "Network error. Please check your internet connection."
-          : message.includes("permission-denied")
-          ? "Your account was created, but your profile could not be saved. Please contact the administrator."
-          : message
+      await signInWithEmailAndPassword(
+        auth,
+        normalizedEmail,
+        password
       );
+    } catch (err: unknown) {
+      console.error("Authentication error:", err);
+
+      const firebaseError = err as {
+        code?: string;
+        message?: string;
+      };
+
+      if (accountCreated) {
+  const code = firebaseError.code ?? "unknown";
+  const message =
+    firebaseError.message ?? "No additional error details were provided.";
+
+  console.error("SANAD registration record creation failed:", {
+    code,
+    message,
+  });
+
+  setError(
+    `Your Firebase login was created, but your SANAD registration record could not be saved. Error: ${code}. ${message} Do not register again with this email.`
+  );
+} else {
+        const code = firebaseError.code ?? "";
+        const message = firebaseError.message ?? "";
+
+        switch (code) {
+          case "auth/email-already-in-use":
+            setError(
+              "This email already has an account. Please sign in instead."
+            );
+            break;
+
+          case "auth/invalid-credential":
+          case "auth/wrong-password":
+          case "auth/user-not-found":
+            setError("Incorrect email or password.");
+            break;
+
+          case "auth/weak-password":
+            setError("Your password must contain at least 6 characters.");
+            break;
+
+          case "auth/invalid-email":
+            setError("Please enter a valid email address.");
+            break;
+
+          case "auth/network-request-failed":
+            setError(
+              "Network error. Please check your internet connection and try again."
+            );
+            break;
+
+          case "permission-denied":
+          case "firestore/permission-denied":
+            setError(
+              "You do not have permission to complete this action. Please contact the administrator."
+            );
+            break;
+
+          default:
+            setError(
+              message || "Something went wrong. Please try again."
+            );
+        }
+      }
     } finally {
       setLoading(false);
     }
@@ -97,11 +189,14 @@ export default function AuthScreen() {
     }
 
     try {
-      await sendPasswordResetEmail(auth, email.trim());
-      setSuccess("Password reset instructions have been sent to your email.");
+      await sendPasswordResetEmail(auth, email.trim().toLowerCase());
+
+      setSuccess(
+        "Password reset instructions have been sent to your email."
+      );
     } catch {
       setError(
-        "Unable to send a password reset email. Please check the address."
+        "Unable to send a password reset email. Please check the address and try again."
       );
     }
   }
@@ -110,87 +205,52 @@ export default function AuthScreen() {
     setIsRegistering(!isRegistering);
     setError("");
     setSuccess("");
+    setRole("patient");
+    setPassword("");
   }
 
+  const inputStyle = {
+    backgroundColor: "var(--surface)",
+    color: "var(--text-main)",
+    borderColor: "var(--border)",
+  };
+
+  const roles: {
+    value: AccountRole;
+    title: string;
+    description: string;
+    icon: typeof Heart;
+  }[] = [
+    {
+      value: "patient",
+      title: "Patient",
+      description: "Appointments, maternal care and health support",
+      icon: Heart,
+    },
+    {
+      value: "healthWorker",
+      title: "Healthcare worker",
+      description: "Patient care, follow-ups and communication",
+      icon: Stethoscope,
+    },
+  ];
+
   return (
-    <main className="min-h-screen flex items-center justify-center p-4 sm:p-6"
+    <main
+      className="flex min-h-screen items-center justify-center p-4 sm:p-6"
       style={{ backgroundColor: "var(--app-bg)" }}
     >
-      <div className="w-full max-w-6xl grid lg:grid-cols-2 overflow-hidden rounded-[28px] border shadow-xl"
+      <div
+        className="w-full max-w-xl overflow-hidden rounded-[28px] border shadow-xl"
         style={{
           backgroundColor: "var(--surface)",
           borderColor: "var(--border)",
           boxShadow: "var(--shadow-card)",
         }}
       >
-        {/* LEFT BRANDING PANEL */}
-        <section
-          className="hidden lg:flex flex-col justify-between p-12 text-white relative overflow-hidden"
-          style={{
-            background:
-              "linear-gradient(145deg, #63365F 0%, #784C75 55%, #956B91 100%)",
-          }}
-        >
-          <div className="absolute -top-24 -right-24 h-80 w-80 rounded-full border border-white/10" />
-          <div className="absolute -bottom-28 -left-20 h-80 w-80 rounded-full border border-white/10" />
-
-          <div className="relative z-10">
-            <div className="flex items-center gap-3">
-              <div className="flex h-12 w-12 items-center justify-center rounded-2xl bg-white/15">
-                <HeartHandshake size={27} />
-              </div>
-              <div>
-                <h1 className="text-2xl font-bold tracking-tight">
-                  SANAD CareLink
-                </h1>
-                <p className="text-sm text-white/75">
-                  Maternal Health Support
-                </p>
-              </div>
-            </div>
-
-            <div className="mt-24 max-w-md">
-              <span className="inline-flex items-center gap-2 rounded-full border border-white/20 bg-white/10 px-4 py-2 text-xs font-medium">
-                <Heart size={14} />
-                Care, connection and support
-              </span>
-
-              <h2 className="mt-7 text-4xl font-bold leading-tight">
-                Your journey to motherhood deserves support.
-              </h2>
-
-              <p className="mt-5 text-base leading-8 text-white/80">
-                Stay connected with your maternal healthcare journey.
-                Keep track of appointments, follow-ups and important
-                health information in one place.
-              </p>
-            </div>
-          </div>
-
-          <div className="relative z-10 mt-16 space-y-5">
-            <div className="flex items-center gap-3">
-              <div className="flex h-10 w-10 items-center justify-center rounded-xl bg-white/15">
-                <ShieldCheck size={21} />
-              </div>
-              <div>
-                <p className="font-semibold">Your care matters</p>
-                <p className="text-sm text-white/70">
-                  Designed to support your healthcare journey.
-                </p>
-              </div>
-            </div>
-
-            <p className="text-xs text-white/60">
-              SANAD CareLink · Maternal healthcare support
-            </p>
-          </div>
-        </section>
-
-        {/* RIGHT AUTHENTICATION PANEL */}
         <section className="flex flex-col justify-center px-6 py-10 sm:px-12 sm:py-14">
           <div className="mx-auto w-full max-w-md">
-            {/* MOBILE BRANDING */}
-            <div className="mb-9 lg:hidden">
+            <div className="mb-9">
               <div className="flex items-center gap-3">
                 <div
                   className="flex h-12 w-12 items-center justify-center rounded-2xl text-white"
@@ -206,7 +266,11 @@ export default function AuthScreen() {
                   >
                     SANAD CareLink
                   </h1>
-                  <p className="text-xs" style={{ color: "var(--text-muted)" }}>
+
+                  <p
+                    className="text-xs"
+                    style={{ color: "var(--text-muted)" }}
+                  >
                     Maternal Health Support
                   </p>
                 </div>
@@ -233,14 +297,97 @@ export default function AuthScreen() {
                 style={{ color: "var(--text-muted)" }}
               >
                 {isRegistering
-                  ? "Create your account to access your maternal health support."
-                  : "Sign in to continue to your personal healthcare support space."}
+                  ? "Choose your account type to get started."
+                  : "Sign in to continue to your SANAD CareLink dashboard."}
               </p>
             </div>
 
             <form onSubmit={handleSubmit} className="space-y-5">
               {isRegistering && (
                 <>
+                  <div>
+                    <label
+                      className="mb-3 block text-sm font-semibold"
+                      style={{ color: "var(--text-main)" }}
+                    >
+                      I am registering as
+                    </label>
+
+                    <div className="space-y-2">
+                      {roles.map((item) => {
+                        const Icon = item.icon;
+                        const selected = role === item.value;
+
+                        return (
+                          <button
+                            key={item.value}
+                            type="button"
+                            onClick={() => setRole(item.value)}
+                            className="flex w-full items-center gap-3 rounded-xl border p-3 text-left transition hover:border-blue-400"
+                            style={{
+                              borderColor: selected
+                                ? "var(--primary)"
+                                : "var(--border)",
+                              backgroundColor: selected
+                                ? "rgba(37,99,235,0.07)"
+                                : "var(--surface)",
+                            }}
+                          >
+                            <div
+                              className="flex h-10 w-10 shrink-0 items-center justify-center rounded-xl"
+                              style={{
+                                color: "var(--primary)",
+                                backgroundColor: "rgba(37,99,235,0.10)",
+                              }}
+                            >
+                              <Icon size={20} />
+                            </div>
+
+                            <div className="min-w-0 flex-1">
+                              <p
+                                className="text-sm font-bold"
+                                style={{ color: "var(--text-main)" }}
+                              >
+                                {item.title}
+                              </p>
+
+                              <p
+                                className="text-xs"
+                                style={{ color: "var(--text-muted)" }}
+                              >
+                                {item.description}
+                              </p>
+                            </div>
+
+                            <span
+                              className="flex h-5 w-5 items-center justify-center rounded-full border"
+                              style={{
+                                borderColor: selected
+                                  ? "var(--primary)"
+                                  : "var(--border)",
+                                backgroundColor: selected
+                                  ? "var(--primary)"
+                                  : "transparent",
+                              }}
+                            >
+                              {selected && (
+                                <span className="h-2 w-2 rounded-full bg-white" />
+                              )}
+                            </span>
+                          </button>
+                        );
+                      })}
+                    </div>
+
+                    {role === "healthWorker" && (
+                      <p className="mt-3 rounded-lg bg-blue-50 p-3 text-xs leading-5 text-blue-800">
+                        Healthcare worker accounts require administrator
+                        verification. You will only receive access to
+                        healthcare worker features after approval.
+                      </p>
+                    )}
+                  </div>
+
                   <div>
                     <label
                       htmlFor="fullName"
@@ -253,17 +400,37 @@ export default function AuthScreen() {
                     <input
                       id="fullName"
                       required
+                      minLength={2}
+                      maxLength={120}
                       value={fullName}
                       onChange={(e) => setFullName(e.target.value)}
                       className="w-full rounded-xl border px-4 py-3.5 outline-none focus:ring-2"
-                      style={{
-                        backgroundColor: "var(--surface)",
-                        color: "var(--text-main)",
-                        borderColor: "var(--border)",
-                      }}
+                      style={inputStyle}
                       placeholder="Enter your full name"
                     />
                   </div>
+
+                  {role === "patient" && (
+                    <div>
+                      <label
+                        htmlFor="phone"
+                        className="mb-2 block text-sm font-semibold"
+                        style={{ color: "var(--text-main)" }}
+                      >
+                        Phone number (optional)
+                      </label>
+
+                      <input
+                        id="phone"
+                        type="tel"
+                        value={phone}
+                        onChange={(e) => setPhone(e.target.value)}
+                        className="w-full rounded-xl border px-4 py-3.5 outline-none"
+                        style={inputStyle}
+                        placeholder="Enter your phone number"
+                      />
+                    </div>
+                  )}
 
                   <div>
                     <label
@@ -277,41 +444,36 @@ export default function AuthScreen() {
                     <input
                       id="facility"
                       required
+                      minLength={2}
                       value={facility}
                       onChange={(e) => setFacility(e.target.value)}
-                      className="w-full rounded-xl border px-4 py-3.5 outline-none focus:ring-2"
-                      style={{
-                        backgroundColor: "var(--surface)",
-                        color: "var(--text-main)",
-                        borderColor: "var(--border)",
-                      }}
+                      className="w-full rounded-xl border px-4 py-3.5 outline-none"
+                      style={inputStyle}
+                      placeholder="Enter your health facility"
                     />
                   </div>
 
-                  <div>
-                    <label
-                      htmlFor="language"
-                      className="mb-2 block text-sm font-semibold"
-                      style={{ color: "var(--text-main)" }}
-                    >
-                      Preferred language
-                    </label>
+                  {role === "patient" && (
+                    <div>
+                      <label
+                        htmlFor="language"
+                        className="mb-2 block text-sm font-semibold"
+                        style={{ color: "var(--text-main)" }}
+                      >
+                        Preferred language
+                      </label>
 
-                    <select
-                      id="language"
-                      value={language}
-                      onChange={(e) => setLanguage(e.target.value)}
-                      className="w-full rounded-xl border px-4 py-3.5 outline-none"
-                      style={{
-                        backgroundColor: "var(--surface)",
-                        color: "var(--text-main)",
-                        borderColor: "var(--border)",
-                      }}
-                    >
-                      <option>English</option>
-                      <option>Other (to be confirmed)</option>
-                    </select>
-                  </div>
+                      <input
+                        id="language"
+                        required
+                        value={language}
+                        onChange={(e) => setLanguage(e.target.value)}
+                        className="w-full rounded-xl border px-4 py-3.5 outline-none"
+                        style={inputStyle}
+                        placeholder="Enter your preferred language"
+                      />
+                    </div>
+                  )}
                 </>
               )}
 
@@ -332,11 +494,7 @@ export default function AuthScreen() {
                   value={email}
                   onChange={(e) => setEmail(e.target.value)}
                   className="w-full rounded-xl border px-4 py-3.5 outline-none focus:ring-2"
-                  style={{
-                    backgroundColor: "var(--surface)",
-                    color: "var(--text-main)",
-                    borderColor: "var(--border)",
-                  }}
+                  style={inputStyle}
                   placeholder="you@example.com"
                 />
               </div>
@@ -362,22 +520,24 @@ export default function AuthScreen() {
                     value={password}
                     onChange={(e) => setPassword(e.target.value)}
                     className="w-full rounded-xl border px-4 py-3.5 pr-12 outline-none focus:ring-2"
-                    style={{
-                      backgroundColor: "var(--surface)",
-                      color: "var(--text-main)",
-                      borderColor: "var(--border)",
-                    }}
+                    style={inputStyle}
                     placeholder="At least 6 characters"
                   />
 
                   <button
                     type="button"
                     onClick={() => setShowPassword(!showPassword)}
-                    aria-label={showPassword ? "Hide password" : "Show password"}
+                    aria-label={
+                      showPassword ? "Hide password" : "Show password"
+                    }
                     className="absolute right-4 top-1/2 -translate-y-1/2"
                     style={{ color: "var(--text-muted)" }}
                   >
-                    {showPassword ? <EyeOff size={19} /> : <Eye size={19} />}
+                    {showPassword ? (
+                      <EyeOff size={19} />
+                    ) : (
+                      <Eye size={19} />
+                    )}
                   </button>
                 </div>
               </div>
@@ -398,12 +558,7 @@ export default function AuthScreen() {
               {error && (
                 <div
                   role="alert"
-                  className="rounded-xl border p-3 text-sm"
-                  style={{
-                    backgroundColor: "#FFF1F2",
-                    color: "#9F3347",
-                    borderColor: "#F5C8D0",
-                  }}
+                  className="rounded-xl border border-red-200 bg-red-50 p-3 text-sm text-red-800"
                 >
                   {error}
                 </div>
@@ -412,12 +567,7 @@ export default function AuthScreen() {
               {success && (
                 <div
                   role="status"
-                  className="rounded-xl border p-3 text-sm"
-                  style={{
-                    backgroundColor: "#EDF7F0",
-                    color: "#326747",
-                    borderColor: "#C8E5D0",
-                  }}
+                  className="rounded-xl border border-green-200 bg-green-50 p-3 text-sm text-green-800"
                 >
                   {success}
                 </div>
@@ -427,16 +577,15 @@ export default function AuthScreen() {
                 type="submit"
                 disabled={loading}
                 className="flex w-full items-center justify-center gap-3 rounded-xl px-5 py-4 font-semibold text-white shadow-md transition hover:-translate-y-0.5 disabled:cursor-not-allowed disabled:opacity-60"
-                style={{
-                  backgroundColor: "var(--primary)",
-                  boxShadow: "0 8px 20px rgba(99, 54, 95, 0.18)",
-                }}
+                style={{ backgroundColor: "var(--primary)" }}
               >
                 {loading
                   ? "Please wait..."
                   : isRegistering
-                  ? "Create account"
-                  : "Sign in"}
+                    ? role === "patient"
+                      ? "Create patient account"
+                      : "Submit healthcare worker application"
+                    : "Sign in"}
 
                 {!loading && <ArrowRight size={19} />}
               </button>
@@ -469,7 +618,7 @@ export default function AuthScreen() {
               style={{ color: "var(--text-muted)" }}
             >
               <LockKeyhole size={14} />
-              <span>Maternal healthcare support</span>
+              <span>Secure maternal healthcare support</span>
             </div>
           </div>
         </section>
@@ -477,4 +626,3 @@ export default function AuthScreen() {
     </main>
   );
 }
-

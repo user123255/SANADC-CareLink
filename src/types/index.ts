@@ -32,6 +32,7 @@ export type PatientProfileUpdate = {
 };
 
 export type AppointmentStatus =
+  | "pending"
   | "scheduled"
   | "completed"
   | "cancelled";
@@ -193,3 +194,4 @@ export interface AuditLog {
   details: string;
   createdAt: Timestamp | null;
 }
+

@@ -1,0 +1,244 @@
+
+@import "tailwindcss";
+
+/* =========================================
+   SANAD CARELINK — PLUM DESIGN SYSTEM
+========================================= */
+
+:root {
+  font-family: Inter, "Segoe UI", Arial, sans-serif;
+  font-synthesis: none;
+  text-rendering: optimizeLegibility;
+
+  color-scheme: light;
+
+  --primary: #63365F;
+  --primary-hover: #4D294A;
+  --primary-soft: #EADDEC;
+  --secondary: #956B91;
+  --lavender: #D9C5DF;
+
+  --app-bg: #F8F5F8;
+  --surface: #FFFFFF;
+  --surface-soft: #F5EFF5;
+
+  --text-main: #302631;
+  --text-muted: #796D7A;
+
+  --border: #E9E0E9;
+  --success: #477B63;
+  --warning: #A66B32;
+  --danger: #B84E61;
+
+  --shadow-card: 0 8px 28px rgba(68, 39, 68, 0.055);
+}
+
+html[data-theme="dark"] {
+  color-scheme: dark;
+
+  --primary: #C69AC5;
+  --primary-hover: #DAB5D8;
+  --primary-soft: #49354A;
+  --secondary: #B993B7;
+  --lavender: #674F69;
+
+  --app-bg: #19151C;
+  --surface: #241F28;
+  --surface-soft: #302936;
+
+  --text-main: #F5EEF5;
+  --text-muted: #B9AEBB;
+
+  --border: #403645;
+  --success: #91C6A6;
+  --warning: #E3B47C;
+  --danger: #ED9AA9;
+
+  --shadow-card: 0 8px 28px rgba(0, 0, 0, 0.20);
+}
+
+* {
+  box-sizing: border-box;
+}
+
+html {
+  min-width: 320px;
+  scroll-behavior: smooth;
+}
+
+body {
+  margin: 0;
+  min-width: 320px;
+  min-height: 100vh;
+  background: var(--app-bg);
+  color: var(--text-main);
+  font-family: Inter, "Segoe UI", Arial, sans-serif;
+  transition:
+    background-color 250ms ease,
+    color 250ms ease;
+}
+
+button,
+input,
+select,
+textarea {
+  font: inherit;
+}
+
+button {
+  cursor: pointer;
+  -webkit-tap-highlight-color: transparent;
+}
+
+button:disabled {
+  cursor: not-allowed;
+}
+
+input,
+select,
+textarea {
+  max-width: 100%;
+}
+
+::selection {
+  background: var(--lavender);
+  color: var(--text-main);
+}
+
+/* Scrollbar */
+
+::-webkit-scrollbar {
+  width: 8px;
+  height: 8px;
+}
+
+::-webkit-scrollbar-thumb {
+  background: var(--lavender);
+  border-radius: 20px;
+}
+
+::-webkit-scrollbar-track {
+  background: var(--app-bg);
+}
+
+/* Focus accessibility */
+
+:focus-visible {
+  outline: 3px solid var(--secondary);
+  outline-offset: 3px;
+}
+
+/* Smooth interface transitions */
+
+button,
+a,
+article,
+section,
+aside,
+input,
+select,
+textarea {
+  transition:
+    background-color 200ms ease,
+    border-color 200ms ease,
+    color 200ms ease,
+    box-shadow 200ms ease;
+}
+
+/* Reusable SANAD components */
+
+.sanad-card {
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: 20px;
+  box-shadow: var(--shadow-card);
+}
+
+.sanad-primary-button {
+  background: var(--primary);
+  color: white;
+  border-radius: 12px;
+  padding: 12px 18px;
+  font-weight: 600;
+  transition: transform 200ms ease, background 200ms ease;
+}
+
+.sanad-primary-button:hover {
+  background: var(--primary-hover);
+  transform: translateY(-1px);
+}
+
+.page-enter {
+  animation: pageEnter 350ms ease both;
+}
+
+@keyframes pageEnter {
+  from {
+    opacity: 0;
+    transform: translateY(9px);
+  }
+
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+
+/* Dark-mode compatibility for existing Tailwind classes */
+
+html[data-theme="dark"] .bg-white {
+  background-color: var(--surface) !important;
+}
+
+html[data-theme="dark"] .bg-slate-50,
+html[data-theme="dark"] .bg-slate-100 {
+  background-color: var(--surface-soft) !important;
+}
+
+html[data-theme="dark"] .text-slate-800,
+html[data-theme="dark"] .text-slate-700,
+html[data-theme="dark"] .text-slate-600 {
+  color: var(--text-main) !important;
+}
+
+html[data-theme="dark"] .text-slate-500,
+html[data-theme="dark"] .text-slate-400 {
+  color: var(--text-muted) !important;
+}
+
+html[data-theme="dark"] .border-slate-200,
+html[data-theme="dark"] .border-slate-100 {
+  border-color: var(--border) !important;
+}
+
+html[data-theme="dark"] input,
+html[data-theme="dark"] select,
+html[data-theme="dark"] textarea {
+  background-color: var(--surface);
+  color: var(--text-main);
+  border-color: var(--border);
+}
+
+html[data-theme="dark"] input::placeholder,
+html[data-theme="dark"] textarea::placeholder {
+  color: var(--text-muted);
+}
+
+/* Mobile and reduced-motion support */
+
+@media (max-width: 640px) {
+  body {
+    font-size: 14px;
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  *,
+  *::before,
+  *::after {
+    scroll-behavior: auto !important;
+    animation-duration: 0.01ms !important;
+    animation-iteration-count: 1 !important;
+    transition-duration: 0.01ms !important;
+  }
+}

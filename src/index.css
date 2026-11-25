@@ -1,81 +1,49 @@
-
-@import "tailwindcss";
-
 /* =========================================
-   SANAD CARELINK — PLUM DESIGN SYSTEM
+   SANAD CARELINK - GLOBAL DESIGN SYSTEM
 ========================================= */
 
 :root {
-  font-family: Inter, "Segoe UI", Arial, sans-serif;
-  font-synthesis: none;
-  text-rendering: optimizeLegibility;
-
   color-scheme: light;
 
-  --primary: #63365F;
-  --primary-hover: #4D294A;
-  --primary-soft: #EADDEC;
-  --secondary: #956B91;
-  --lavender: #D9C5DF;
+  --primary: #2563EB;
+  --primary-dark: #123B73;
+  --primary-light: #EAF2FF;
+  --secondary: #2563EB;
 
-  --app-bg: #F8F5F8;
+  --app-bg: #F4F8FD;
   --surface: #FFFFFF;
-  --surface-soft: #F5EFF5;
+  --surface-secondary: #F7FAFE;
 
-  --text-main: #302631;
-  --text-muted: #796D7A;
+  --text-main: #172B4D;
+  --text-muted: #64748B;
 
-  --border: #E9E0E9;
-  --success: #477B63;
-  --warning: #A66B32;
-  --danger: #B84E61;
+  --border: #DCE6F1;
 
-  --shadow-card: 0 8px 28px rgba(68, 39, 68, 0.055);
-}
+  --accent: #2563EB;
+  --accent-bg: #EAF2FF;
+  --accent-border: #93B4F5;
 
-html[data-theme="dark"] {
-  color-scheme: dark;
+  --shadow: 0 8px 24px rgba(18, 59, 115, 0.08);
+  --shadow-card: 0 4px 18px rgba(18, 59, 115, 0.07);
 
-  --primary: #C69AC5;
-  --primary-hover: #DAB5D8;
-  --primary-soft: #49354A;
-  --secondary: #B993B7;
-  --lavender: #674F69;
-
-  --app-bg: #19151C;
-  --surface: #241F28;
-  --surface-soft: #302936;
-
-  --text-main: #F5EEF5;
-  --text-muted: #B9AEBB;
-
-  --border: #403645;
-  --success: #91C6A6;
-  --warning: #E3B47C;
-  --danger: #ED9AA9;
-
-  --shadow-card: 0 8px 28px rgba(0, 0, 0, 0.20);
-}
-
-* {
-  box-sizing: border-box;
+  --social-bg: #F1F6FD;
+  --text-h: #172B4D;
 }
 
 html {
-  min-width: 320px;
-  scroll-behavior: smooth;
+  min-height: 100%;
+  background: var(--app-bg);
 }
 
 body {
-  margin: 0;
   min-width: 320px;
   min-height: 100vh;
+  margin: 0;
   background: var(--app-bg);
   color: var(--text-main);
-  font-family: Inter, "Segoe UI", Arial, sans-serif;
-  transition:
-    background-color 250ms ease,
-    color 250ms ease;
+  font-family: Inter, ui-sans-serif, system-ui, -apple-system,
+    BlinkMacSystemFont, "Segoe UI", sans-serif;
+  -webkit-font-smoothing: antialiased;
 }
 
 button,
@@ -85,153 +53,180 @@ textarea {
   font: inherit;
 }
 
-button {
-  cursor: pointer;
-  -webkit-tap-highlight-color: transparent;
+button:focus-visible,
+a:focus-visible,
+input:focus-visible,
+select:focus-visible,
+textarea:focus-visible {
+  outline: 2px solid var(--primary);
+  outline-offset: 2px;
 }
 
-button:disabled {
-  cursor: not-allowed;
-}
+@import "tailwindcss";
 
-input,
-select,
-textarea {
-  max-width: 100%;
-}
+/* =========================================
+   SANAD CARELINK - ANIMATIONS & TRANSITIONS
+========================================= */
 
-::selection {
-  background: var(--lavender);
-  color: var(--text-main);
-}
-
-/* Scrollbar */
-
-::-webkit-scrollbar {
-  width: 8px;
-  height: 8px;
-}
-
-::-webkit-scrollbar-thumb {
-  background: var(--lavender);
-  border-radius: 20px;
-}
-
-::-webkit-scrollbar-track {
-  background: var(--app-bg);
-}
-
-/* Focus accessibility */
-
-:focus-visible {
-  outline: 3px solid var(--secondary);
-  outline-offset: 3px;
-}
-
-/* Smooth interface transitions */
-
-button,
-a,
-article,
-section,
-aside,
-input,
-select,
-textarea {
-  transition:
-    background-color 200ms ease,
-    border-color 200ms ease,
-    color 200ms ease,
-    box-shadow 200ms ease;
-}
-
-/* Reusable SANAD components */
-
-.sanad-card {
-  background: var(--surface);
-  border: 1px solid var(--border);
-  border-radius: 20px;
-  box-shadow: var(--shadow-card);
-}
-
-.sanad-primary-button {
-  background: var(--primary);
-  color: white;
-  border-radius: 12px;
-  padding: 12px 18px;
-  font-weight: 600;
-  transition: transform 200ms ease, background 200ms ease;
-}
-
-.sanad-primary-button:hover {
-  background: var(--primary-hover);
-  transform: translateY(-1px);
-}
-
-.page-enter {
-  animation: pageEnter 350ms ease both;
-}
-
-@keyframes pageEnter {
+/* Smooth page entrance */
+@keyframes sanad-page-enter {
   from {
     opacity: 0;
-    transform: translateY(9px);
+    transform: translateY(14px);
   }
-
   to {
     opacity: 1;
     transform: translateY(0);
   }
 }
 
-/* Dark-mode compatibility for existing Tailwind classes */
-
-html[data-theme="dark"] .bg-white {
-  background-color: var(--surface) !important;
-}
-
-html[data-theme="dark"] .bg-slate-50,
-html[data-theme="dark"] .bg-slate-100 {
-  background-color: var(--surface-soft) !important;
-}
-
-html[data-theme="dark"] .text-slate-800,
-html[data-theme="dark"] .text-slate-700,
-html[data-theme="dark"] .text-slate-600 {
-  color: var(--text-main) !important;
-}
-
-html[data-theme="dark"] .text-slate-500,
-html[data-theme="dark"] .text-slate-400 {
-  color: var(--text-muted) !important;
-}
-
-html[data-theme="dark"] .border-slate-200,
-html[data-theme="dark"] .border-slate-100 {
-  border-color: var(--border) !important;
-}
-
-html[data-theme="dark"] input,
-html[data-theme="dark"] select,
-html[data-theme="dark"] textarea {
-  background-color: var(--surface);
-  color: var(--text-main);
-  border-color: var(--border);
-}
-
-html[data-theme="dark"] input::placeholder,
-html[data-theme="dark"] textarea::placeholder {
-  color: var(--text-muted);
-}
-
-/* Mobile and reduced-motion support */
-
-@media (max-width: 640px) {
-  body {
-    font-size: 14px;
+/* Gentle fade */
+@keyframes sanad-fade-in {
+  from {
+    opacity: 0;
+  }
+  to {
+    opacity: 1;
   }
 }
 
+/* Slide up */
+@keyframes sanad-slide-up {
+  from {
+    opacity: 0;
+    transform: translateY(22px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+
+/* Slide in from right */
+@keyframes sanad-slide-right {
+  from {
+    opacity: 0;
+    transform: translateX(20px);
+  }
+  to {
+    opacity: 1;
+    transform: translateX(0);
+  }
+}
+
+/* Mobile menu entrance */
+@keyframes sanad-menu-enter {
+  from {
+    opacity: 0;
+    transform: translateX(100%);
+  }
+  to {
+    opacity: 1;
+    transform: translateX(0);
+  }
+}
+
+/* Soft floating effect */
+@keyframes sanad-float {
+  0%, 100% {
+    transform: translateY(0);
+  }
+  50% {
+    transform: translateY(-5px);
+  }
+}
+
+/* Gentle pulse */
+@keyframes sanad-pulse {
+  0%, 100% {
+    opacity: 1;
+  }
+  50% {
+    opacity: 0.7;
+  }
+}
+
+/* Reusable animation classes */
+.page-enter {
+  animation: sanad-page-enter 0.4s ease-out both;
+}
+
+.fade-in {
+  animation: sanad-fade-in 0.35s ease-out both;
+}
+
+.slide-up {
+  animation: sanad-slide-up 0.45s ease-out both;
+}
+
+.slide-right {
+  animation: sanad-slide-right 0.4s ease-out both;
+}
+
+.menu-enter {
+  animation: sanad-menu-enter 0.3s ease-out both;
+}
+
+.float-animation {
+  animation: sanad-float 3s ease-in-out infinite;
+}
+
+.pulse-animation {
+  animation: sanad-pulse 2s ease-in-out infinite;
+}
+
+/* Smooth interactive elements */
+button,
+a,
+[role="button"] {
+  transition:
+    background-color 0.2s ease,
+    color 0.2s ease,
+    border-color 0.2s ease,
+    box-shadow 0.2s ease,
+    transform 0.2s ease,
+    opacity 0.2s ease;
+}
+
+/* Cards */
+.sanad-card,
+.card-hover {
+  transition:
+    transform 0.25s ease,
+    box-shadow 0.25s ease,
+    border-color 0.25s ease;
+}
+
+.card-hover:hover {
+  transform: translateY(-3px);
+  box-shadow: 0 12px 28px rgba(23, 78, 166, 0.09);
+}
+
+/* Button interaction */
+.sanad-animated-button {
+  transition:
+    transform 0.2s ease,
+    box-shadow 0.2s ease,
+    background-color 0.2s ease;
+}
+
+.sanad-animated-button:hover {
+  transform: translateY(-2px);
+  box-shadow: 0 8px 18px rgba(23, 78, 166, 0.16);
+}
+
+.sanad-animated-button:active {
+  transform: scale(0.97);
+}
+
+/* Input focus */
+.sanad-input {
+  transition:
+    border-color 0.2s ease,
+    box-shadow 0.2s ease;
+}
+
+/* Respect accessibility preferences */
 @media (prefers-reduced-motion: reduce) {
   *,
   *::before,
@@ -242,3 +237,4 @@ html[data-theme="dark"] textarea::placeholder {
     transition-duration: 0.01ms !important;
   }
 }
+

@@ -1,0 +1,132 @@
+
+import {setGlobalOptions} from "firebase-functions";
+import {onCall, HttpsError} from "firebase-functions/v2/https";
+import {initializeApp} from "firebase-admin/app";
+import {getFirestore, FieldValue} from "firebase-admin/firestore";
+
+initializeApp();
+
+const db = getFirestore();
+
+setGlobalOptions({maxInstances: 10});
+
+export const reviewStaffApplication = onCall(async (request) => {
+  const adminUid = request.auth?.uid;
+
+  if (!adminUid) {
+    throw new HttpsError(
+      "unauthenticated",
+      "Please sign in before reviewing applications."
+    );
+  }
+
+  const adminRef = db.collection("users").doc(adminUid);
+  const adminSnapshot = await adminRef.get();
+
+  if (
+    !adminSnapshot.exists ||
+    adminSnapshot.data()?.role !== "admin" ||
+    adminSnapshot.data()?.accountStatus !== "active"
+  ) {
+    throw new HttpsError(
+      "permission-denied",
+      "Only active administrators can review staff applications."
+    );
+  }
+
+  const applicationUid = request.data?.applicationUid;
+  const decision = request.data?.decision;
+
+  if (
+    typeof applicationUid !== "string" ||
+    applicationUid.trim().length === 0
+  ) {
+    throw new HttpsError(
+      "invalid-argument",
+      "A valid application ID is required."
+    );
+  }
+
+  if (decision !== "approve" && decision !== "reject") {
+    throw new HttpsError(
+      "invalid-argument",
+      "Decision must be approve or reject."
+    );
+  }
+
+  const applicationRef = db
+    .collection("staffApplications")
+    .doc(applicationUid);
+
+  const workerRef = db.collection("users").doc(applicationUid);
+
+  return db.runTransaction(async (transaction) => {
+    const applicationSnapshot = await transaction.get(applicationRef);
+
+    if (!applicationSnapshot.exists) {
+      throw new HttpsError(
+        "not-found",
+        "This staff application could not be found."
+      );
+    }
+
+    const application = applicationSnapshot.data();
+
+    if (
+      application?.uid !== applicationUid ||
+      application?.requestedRole !== "healthWorker"
+    ) {
+      throw new HttpsError(
+        "failed-precondition",
+        "This is not a valid healthcare worker application."
+      );
+    }
+
+    if (application.status !== "pending") {
+      throw new HttpsError(
+        "failed-precondition",
+        "This application has already been reviewed."
+      );
+    }
+
+    if (decision === "approve") {
+      const workerSnapshot = await transaction.get(workerRef);
+
+      if (workerSnapshot.exists) {
+        throw new HttpsError(
+          "already-exists",
+          "A profile already exists for this account. " +
+          "Please investigate before approving."
+        );
+      }
+
+      transaction.set(workerRef, {
+        uid: applicationUid,
+        fullName: application.fullName,
+        email: application.email,
+        role: "healthWorker",
+        phone: "",
+        preferredLanguage: "",
+        facility: application.facility,
+        assignedWorkerUid: null,
+        accountStatus: "active",
+        createdAt: FieldValue.serverTimestamp(),
+        updatedAt: FieldValue.serverTimestamp(),
+      });
+    }
+
+    transaction.update(applicationRef, {
+      status: decision === "approve" ? "approved" : "rejected",
+      reviewedByUid: adminUid,
+      reviewedAt: FieldValue.serverTimestamp(),
+      updatedAt: FieldValue.serverTimestamp(),
+    });
+
+    return {
+      success: true,
+      decision,
+      applicationUid,
+    };
+  });
+});
+
