@@ -303,11 +303,10 @@ npm run preview
 | `npm run lint` | Run Oxlint |
 | `npx tsc --noEmit` | Check TypeScript without generating output |
 
+The live Application can be accessed here https://sanad-carelink.web.app
+
 
 ## 9. User Roles and Access Control
-```bash 
-The live Application can be accessed here https://sanad-carelink.web.app
-```
 
 SANAD CareLink uses three primary account roles:
 
