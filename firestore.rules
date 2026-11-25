@@ -67,38 +67,60 @@ service cloud.firestore {
   resource.data.accountStatus == "active"
 );
 
-      // Public self-registration is restricted to patients.
-      // Administrator and healthcare-worker profiles must
-      // be provisioned through trusted authorization.
-      allow create: if signedIn() &&
-        request.auth.uid == userId &&
-        request.resource.data.uid == userId &&
-        request.resource.data.role == "patient" &&
-        request.resource.data.accountStatus == "active" &&
-        request.resource.data.assignedWorkerUid == null &&
-        request.resource.data.email == request.auth.token.email &&
-        request.resource.data.fullName is string &&
-        request.resource.data.fullName.size() >= 2 &&
-        request.resource.data.fullName.size() <= 120 &&
-        request.resource.data.facility is string &&
-        request.resource.data.facility.size() >= 2 &&
-        request.resource.data.phone is string &&
-        request.resource.data.preferredLanguage is string &&
-        request.resource.data.createdAt == request.time &&
-        request.resource.data.updatedAt == request.time &&
-        request.resource.data.keys().hasOnly([
-          "uid",
-          "fullName",
-          "email",
-          "role",
-          "phone",
-          "preferredLanguage",
-          "facility",
-          "assignedWorkerUid",
-          "accountStatus",
-          "createdAt",
-          "updatedAt"
-        ]);
+      // Patients can self-register. Active administrators can
+      // create a worker profile only while approving its pending application.
+      allow create: if (
+        (
+          signedIn() &&
+          request.auth.uid == userId &&
+          request.resource.data.uid == userId &&
+          request.resource.data.role == "patient" &&
+          request.resource.data.accountStatus == "active" &&
+          request.resource.data.assignedWorkerUid == null &&
+          request.resource.data.email == request.auth.token.email &&
+          request.resource.data.fullName is string &&
+          request.resource.data.fullName.size() >= 2 &&
+          request.resource.data.fullName.size() <= 120 &&
+          request.resource.data.facility is string &&
+          request.resource.data.facility.size() >= 2 &&
+          request.resource.data.phone is string &&
+          request.resource.data.preferredLanguage is string &&
+          request.resource.data.createdAt == request.time &&
+          request.resource.data.updatedAt == request.time &&
+          request.resource.data.keys().hasOnly([
+            "uid", "fullName", "email", "role", "phone",
+            "preferredLanguage", "facility", "assignedWorkerUid",
+            "accountStatus", "createdAt", "updatedAt"
+          ])
+        ) ||
+        (
+          isAdmin() &&
+          request.resource.data.uid == userId &&
+          request.resource.data.role == "healthWorker" &&
+          request.resource.data.accountStatus == "active" &&
+          request.resource.data.assignedWorkerUid == null &&
+          request.resource.data.phone == "" &&
+          request.resource.data.preferredLanguage == "" &&
+          request.resource.data.fullName is string &&
+          request.resource.data.email is string &&
+          request.resource.data.facility is string &&
+          request.resource.data.createdAt == request.time &&
+          request.resource.data.updatedAt == request.time &&
+          request.resource.data.keys().hasOnly([
+            "uid", "fullName", "email", "role", "phone",
+            "preferredLanguage", "facility", "assignedWorkerUid",
+            "accountStatus", "createdAt", "updatedAt"
+          ]) &&
+          exists(/databases/$(database)/documents/staffApplications/$(userId)) &&
+          get(/databases/$(database)/documents/staffApplications/$(userId)).data.uid == userId &&
+          get(/databases/$(database)/documents/staffApplications/$(userId)).data.requestedRole == "healthWorker" &&
+          get(/databases/$(database)/documents/staffApplications/$(userId)).data.status == "pending" &&
+          get(/databases/$(database)/documents/staffApplications/$(userId)).data.fullName == request.resource.data.fullName &&
+          get(/databases/$(database)/documents/staffApplications/$(userId)).data.email == request.resource.data.email &&
+          get(/databases/$(database)/documents/staffApplications/$(userId)).data.facility == request.resource.data.facility &&
+          getAfter(/databases/$(database)/documents/staffApplications/$(userId)).data.status == "approved"
+        )
+      );
 
       // Patients can update only their basic profile information.
       // Administrators can assign or unassign a healthcare worker.
@@ -186,8 +208,40 @@ service cloud.firestore {
           "updatedAt"
         ]);
 
-      // Approval and rejection must be performed by trusted backend code.
-      allow update, delete: if false;
+      // Only an active administrator can review a pending application.
+      // Approval requires the matching worker profile in the same transaction.
+      allow update: if isAdmin() &&
+        resource.data.status == "pending" &&
+        request.resource.data.uid == resource.data.uid &&
+        request.resource.data.requestedRole == "healthWorker" &&
+        request.resource.data.fullName == resource.data.fullName &&
+        request.resource.data.email == resource.data.email &&
+        request.resource.data.facility == resource.data.facility &&
+        request.resource.data.createdAt == resource.data.createdAt &&
+        request.resource.data.status in ["approved", "rejected"] &&
+        request.resource.data.reviewedByUid == request.auth.uid &&
+        request.resource.data.reviewedAt == request.time &&
+        request.resource.data.updatedAt == request.time &&
+        request.resource.data.diff(resource.data).affectedKeys()
+          .hasOnly(["status", "reviewedByUid", "reviewedAt", "updatedAt"]) &&
+        (
+          (
+            request.resource.data.status == "approved" &&
+            existsAfter(/databases/$(database)/documents/users/$(applicationId)) &&
+            getAfter(/databases/$(database)/documents/users/$(applicationId)).data.uid == applicationId &&
+            getAfter(/databases/$(database)/documents/users/$(applicationId)).data.role == "healthWorker" &&
+            getAfter(/databases/$(database)/documents/users/$(applicationId)).data.accountStatus == "active" &&
+            getAfter(/databases/$(database)/documents/users/$(applicationId)).data.fullName == resource.data.fullName &&
+            getAfter(/databases/$(database)/documents/users/$(applicationId)).data.email == resource.data.email &&
+            getAfter(/databases/$(database)/documents/users/$(applicationId)).data.facility == resource.data.facility
+          ) ||
+          (
+            request.resource.data.status == "rejected" &&
+            !existsAfter(/databases/$(database)/documents/users/$(applicationId))
+          )
+        );
+
+      allow delete: if false;
     }
 
     // --------------------------------------------------
@@ -544,3 +598,4 @@ service cloud.firestore {
     }
   }
 }
+

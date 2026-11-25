@@ -46,7 +46,7 @@ export default function AppRoot() {
 
         // Allow time for the registration process to finish creating
         // the Firestore profile after Firebase Authentication succeeds.
-        for (let attempt = 0; attempt < 7; attempt++) {
+        for (let attempt = 0; attempt < 30; attempt++) {
           loadingStage = "user profile";
 
           profileSnapshot = await getDoc(
@@ -57,8 +57,8 @@ export default function AppRoot() {
 
           if (profileSnapshot.exists()) break;
 
-          if (attempt < 6) {
-            await new Promise((resolve) => setTimeout(resolve, 800));
+          if (attempt < 29) {
+            await new Promise((resolve) => setTimeout(resolve, 1000));
           }
         }
 
@@ -223,20 +223,30 @@ export default function AppRoot() {
   }
 
   if (applicationStatus) {
+    const isPending = applicationStatus === "pending";
+    const isRejected = applicationStatus === "rejected";
+
     return (
       <div className="flex min-h-screen items-center justify-center bg-slate-50 px-4 py-8">
         <div className="w-full max-w-md rounded-3xl border border-blue-100 bg-white p-8 text-center shadow-lg">
           <div className="mx-auto flex h-16 w-16 items-center justify-center rounded-2xl bg-blue-50 text-3xl">
-            🕒
+            {isPending ? "🕒" : isRejected ? "✕" : "ℹ️"}
           </div>
 
           <h1 className="mt-5 text-2xl font-bold text-slate-900">
-            Staff application submitted
+            {isPending
+              ? "Staff application submitted"
+              : isRejected
+                ? "Staff application not approved"
+                : "Staff application status"}
           </h1>
 
           <p className="mt-3 text-sm leading-6 text-slate-600">
-            Your staff application is awaiting administrator review.
-            Dashboard access will be available after approval and activation.
+            {isPending
+              ? "Your staff application is awaiting administrator review. Dashboard access will be available after approval and activation."
+              : isRejected
+                ? "Your healthcare worker application was not approved. Please contact your facility administrator for more information."
+                : "Your application has been reviewed. If you believe this status is incorrect, please contact the administrator."}
           </p>
 
           <p className="mt-4 rounded-xl bg-blue-50 px-4 py-3 text-sm font-semibold text-blue-800">
@@ -317,3 +327,5 @@ export default function AppRoot() {
 
   return null;
 }
+
+

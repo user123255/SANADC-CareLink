@@ -3,6 +3,7 @@ import { useCallback, useEffect, useState } from "react";
 import {
   Activity,
   CalendarDays,
+  ClipboardList,
   CheckCircle2,
   Clock,
   HeartPulse,
@@ -21,12 +22,19 @@ import type {
   Conversation,
   Message,
   UserProfile,
+  Referral,
+  ReferralStatus,
 } from "../types";
 
 import {
   getWorkerAppointments,
   updateAppointmentStatus,
 } from "../services/appointments";
+import {
+  createReferral,
+  getWorkerReferrals,
+  updateReferralStatus,
+} from "../services/referrals";
 
 import { getAssignedPatients } from "../services/staff";
 import { getWorkerConversations, sendMessage, subscribeToConversationMessages } from "../services/messages";
@@ -36,7 +44,7 @@ interface HealthWorkerDashboardProps {
   onSignOut: () => void;
 }
 
-type DashboardTab = "overview" | "patients" | "appointments" | "messages";
+type DashboardTab = "overview" | "patients" | "appointments" | "referrals" | "messages";
 
 export default function HealthWorkerDashboard({
   profile,
@@ -44,6 +52,12 @@ export default function HealthWorkerDashboard({
 }: HealthWorkerDashboardProps) {
   const [patients, setPatients] = useState<UserProfile[]>([]);
   const [appointments, setAppointments] = useState<Appointment[]>([]);
+  const [referrals, setReferrals] = useState<Referral[]>([]);
+  const [selectedReferralPatient, setSelectedReferralPatient] = useState("");
+  const [referralDestination, setReferralDestination] = useState("");
+  const [referralNotes, setReferralNotes] = useState("");
+  const [referralSaving, setReferralSaving] = useState(false);
+  const [referralSuccess, setReferralSuccess] = useState("");
   const [activeTab, setActiveTab] = useState<DashboardTab>("overview");
   const [loading, setLoading] = useState(true);
   const [refreshing, setRefreshing] = useState(false);
@@ -61,13 +75,15 @@ export default function HealthWorkerDashboard({
     setError("");
 
     try {
-      const [patientRecords, appointmentRecords] = await Promise.all([
+      const [patientRecords, appointmentRecords, referralRecords] = await Promise.all([
         getAssignedPatients(profile.uid),
         getWorkerAppointments(profile.uid),
+        getWorkerReferrals(profile.uid),
       ]);
 
       setPatients(patientRecords);
       setAppointments(appointmentRecords);
+      setReferrals(referralRecords);
     } catch (err) {
       console.error("Worker dashboard loading error:", err);
       setError(
@@ -103,6 +119,57 @@ export default function HealthWorkerDashboard({
     }
   }
 
+  async function handleCreateReferral(event: React.FormEvent<HTMLFormElement>) {
+    event.preventDefault();
+
+    if (!selectedReferralPatient || !referralDestination.trim()) {
+      setError("Please select a patient and enter a referral destination.");
+      return;
+    }
+
+    setReferralSaving(true);
+    setError("");
+    setReferralSuccess("");
+
+    try {
+      await createReferral({
+        patientUid: selectedReferralPatient,
+        assignedWorkerUid: profile.uid,
+        createdByUid: profile.uid,
+        destination: referralDestination,
+        notes: referralNotes,
+      });
+
+      setReferralDestination("");
+      setReferralNotes("");
+      setSelectedReferralPatient("");
+      setReferralSuccess("Referral created successfully.");
+      await loadDashboard(true);
+    } catch (err) {
+      console.error("Referral creation error:", err);
+      setError("The referral could not be created. Check that the patient is assigned to your account and try again.");
+    } finally {
+      setReferralSaving(false);
+    }
+  }
+
+  async function handleReferralUpdate(referralId: string, status: ReferralStatus) {
+    setUpdatingId(`referral-${referralId}`);
+    setError("");
+    setReferralSuccess("");
+
+    try {
+      await updateReferralStatus(referralId, status);
+      await loadDashboard(true);
+      setReferralSuccess("Referral status updated.");
+    } catch (err) {
+      console.error("Referral update error:", err);
+      setError("The referral status could not be updated. Please try again.");
+    } finally {
+      setUpdatingId("");
+    }
+  }
+
   const pendingAppointments = appointments.filter(
     (appointment) => appointment.status === "pending"
   );
@@ -119,6 +186,7 @@ export default function HealthWorkerDashboard({
     { id: "overview", label: "Overview", icon: Activity },
     { id: "patients", label: "My patients", icon: Users },
     { id: "appointments", label: "Appointments", icon: CalendarDays },
+    { id: "referrals", label: "Referrals", icon: ClipboardList },
     { id: "messages", label: "Messages", icon: MessageCircle },
   ];
 
@@ -224,16 +292,6 @@ export default function HealthWorkerDashboard({
               );
             })}
           </nav>
-
-          <div className="mt-10 rounded-2xl bg-blue-50 p-4">
-            <HeartPulse className="mb-3 text-blue-700" size={25} />
-            <p className="text-sm font-bold text-blue-950">
-              Community-trust-first care
-            </p>
-            <p className="mt-2 text-xs leading-5 text-blue-800">
-              Support respectful, confidential and continuous maternal healthcare.
-            </p>
-          </div>
         </aside>
 
         <main className="min-w-0 flex-1 p-4 sm:p-6 lg:p-9">
@@ -249,7 +307,9 @@ export default function HealthWorkerDashboard({
                     ? "My patients"
                     : activeTab === "appointments"
                       ? "Appointments"
-                      : "Messages"}
+                      : activeTab === "referrals"
+                        ? "Referrals"
+                        : "Messages"}
               </h2>
               <p className="mt-1 text-sm text-slate-500">
                 {profile.facility}
@@ -275,6 +335,15 @@ export default function HealthWorkerDashboard({
               className="mb-6 rounded-xl border border-red-200 bg-red-50 p-4 text-sm text-red-700"
             >
               {error}
+            </div>
+          )}
+
+          {referralSuccess && (
+            <div
+              role="status"
+              className="mb-6 rounded-xl border border-emerald-200 bg-emerald-50 p-4 text-sm text-emerald-700"
+            >
+              {referralSuccess}
             </div>
           )}
 
@@ -421,6 +490,163 @@ export default function HealthWorkerDashboard({
                   />
                 </section>
               )}
+              {activeTab === "referrals" && (
+                <section className="space-y-6">
+                  <div className="rounded-2xl border border-slate-200 bg-white p-5 shadow-sm sm:p-6">
+                    <h3 className="mb-1 text-lg font-bold text-slate-900">
+                      Create a patient referral
+                    </h3>
+                    <p className="mb-5 text-sm text-slate-500">
+                      Refer one of your assigned patients for additional care or follow-up.
+                    </p>
+
+                    {patients.length === 0 ? (
+                      <EmptyState message="No patients are assigned to your account yet. You need an assigned patient before creating a referral." />
+                    ) : (
+                      <form onSubmit={handleCreateReferral} className="space-y-4">
+                        <div>
+                          <label htmlFor="referral-patient" className="mb-1.5 block text-sm font-semibold text-slate-700">
+                            Patient
+                          </label>
+                          <select
+                            id="referral-patient"
+                            value={selectedReferralPatient}
+                            onChange={(event) => setSelectedReferralPatient(event.target.value)}
+                            required
+                            className="w-full rounded-xl border border-slate-300 bg-white px-3 py-3 text-sm outline-none focus:border-blue-500 focus:ring-2 focus:ring-blue-100"
+                          >
+                            <option value="">Select an assigned patient</option>
+                            {patients.map((patient) => (
+                              <option key={patient.uid} value={patient.uid}>
+                                {patient.fullName}
+                              </option>
+                            ))}
+                          </select>
+                        </div>
+
+                        <div>
+                          <label htmlFor="referral-destination" className="mb-1.5 block text-sm font-semibold text-slate-700">
+                            Referral destination
+                          </label>
+                          <input
+                            id="referral-destination"
+                            value={referralDestination}
+                            onChange={(event) => setReferralDestination(event.target.value)}
+                            placeholder="e.g. Kiryandongo Health Centre"
+                            required
+                            maxLength={160}
+                            className="w-full rounded-xl border border-slate-300 px-3 py-3 text-sm outline-none focus:border-blue-500 focus:ring-2 focus:ring-blue-100"
+                          />
+                        </div>
+
+                        <div>
+                          <label htmlFor="referral-notes" className="mb-1.5 block text-sm font-semibold text-slate-700">
+                            Notes (optional)
+                          </label>
+                          <textarea
+                            id="referral-notes"
+                            value={referralNotes}
+                            onChange={(event) => setReferralNotes(event.target.value)}
+                            placeholder="Add relevant referral or follow-up information"
+                            rows={3}
+                            maxLength={1000}
+                            className="w-full rounded-xl border border-slate-300 px-3 py-3 text-sm outline-none focus:border-blue-500 focus:ring-2 focus:ring-blue-100"
+                          />
+                        </div>
+
+                        <button
+                          type="submit"
+                          disabled={referralSaving}
+                          className="rounded-xl bg-blue-700 px-5 py-3 text-sm font-semibold text-white transition hover:bg-blue-800 disabled:cursor-not-allowed disabled:opacity-60"
+                        >
+                          {referralSaving ? "Creating referral..." : "Create referral"}
+                        </button>
+                      </form>
+                    )}
+                  </div>
+
+                  <div className="rounded-2xl border border-slate-200 bg-white p-5 shadow-sm sm:p-6">
+                    <h3 className="mb-5 text-lg font-bold text-slate-900">
+                      Referrals you have created
+                    </h3>
+
+                    {referrals.length === 0 ? (
+                      <EmptyState message="No referrals have been created by your account yet." />
+                    ) : (
+                      <div className="divide-y divide-slate-100">
+                        {referrals.map((referral) => {
+                          const patient = patients.find(
+                            (item) => item.uid === referral.patientUid
+                          );
+                          const busy = updatingId === `referral-${referral.id}`;
+
+                          return (
+                            <div key={referral.id} className="py-5 first:pt-0 last:pb-0">
+                              <div className="flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
+                                <div className="min-w-0">
+                                  <p className="font-semibold text-slate-900">
+                                    {patient?.fullName ?? "Assigned patient"}
+                                  </p>
+                                  <p className="mt-1 text-sm text-slate-600">
+                                    Destination: {referral.destination}
+                                  </p>
+                                  {referral.notes && (
+                                    <p className="mt-2 whitespace-pre-wrap text-sm text-slate-500">
+                                      {referral.notes}
+                                    </p>
+                                  )}
+                                  <p className="mt-2 text-xs font-semibold uppercase tracking-wide text-slate-500">
+                                    Status: {referral.status}
+                                  </p>
+                                </div>
+
+                                <div className="flex flex-wrap gap-2">
+                                  {referral.status === "pending" && (
+                                    <button
+                                      type="button"
+                                      disabled={busy}
+                                      onClick={() => void handleReferralUpdate(referral.id, "accepted")}
+                                      className="rounded-lg bg-blue-50 px-3 py-2 text-xs font-semibold text-blue-700 hover:bg-blue-100 disabled:opacity-50"
+                                    >
+                                      Accept
+                                    </button>
+                                  )}
+                                  {referral.status !== "completed" && referral.status !== "cancelled" && (
+                                    <button
+                                      type="button"
+                                      disabled={busy}
+                                      onClick={() => void handleReferralUpdate(referral.id, "completed")}
+                                      className="rounded-lg bg-emerald-50 px-3 py-2 text-xs font-semibold text-emerald-700 hover:bg-emerald-100 disabled:opacity-50"
+                                    >
+                                      Mark completed
+                                    </button>
+                                  )}
+                                  {referral.status !== "completed" && referral.status !== "cancelled" && (
+                                    <button
+                                      type="button"
+                                      disabled={busy}
+                                      onClick={() => void handleReferralUpdate(referral.id, "cancelled")}
+                                      className="rounded-lg bg-slate-100 px-3 py-2 text-xs font-semibold text-slate-700 hover:bg-slate-200 disabled:opacity-50"
+                                    >
+                                      Cancel
+                                    </button>
+                                  )}
+                                  {busy && (
+                                    <span className="self-center text-xs text-slate-500">
+                                      Updating...
+                                    </span>
+                                  )}
+                                </div>
+                              </div>
+                            </div>
+                          );
+                        })}
+                      </div>
+                    )}
+                  </div>
+                </section>
+              )}
+
               {activeTab === "messages" && (
                 <WorkerMessages
                   workerUid={profile.uid}
@@ -428,10 +654,6 @@ export default function HealthWorkerDashboard({
                 />
               )}            </>
           )}
-
-          <footer className="mt-10 border-t border-slate-200 py-5 text-center text-xs text-slate-400">
-            SANAD CareLink · Confidential maternal healthcare support
-          </footer>
         </main>
       </div>
     </div>
@@ -828,4 +1050,6 @@ function EmptyState({ message }: { message: string }) {
     </div>
   );
 }
+
+
 

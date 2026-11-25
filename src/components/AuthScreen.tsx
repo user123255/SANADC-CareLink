@@ -118,10 +118,19 @@ export default function AuthScreen() {
       };
 
       if (accountCreated) {
-        setError(
-          "Your login account was created, but your SANAD profile or application could not be saved. Do not register again. Please sign in with the same email or contact the administrator for assistance."
-        );
-      } else {
+  const code = firebaseError.code ?? "unknown";
+  const message =
+    firebaseError.message ?? "No additional error details were provided.";
+
+  console.error("SANAD registration record creation failed:", {
+    code,
+    message,
+  });
+
+  setError(
+    `Your Firebase login was created, but your SANAD registration record could not be saved. Error: ${code}. ${message} Do not register again with this email.`
+  );
+} else {
         const code = firebaseError.code ?? "";
         const message = firebaseError.message ?? "";
 

@@ -134,3 +134,17 @@ export async function updateAppointmentStatus(
     updatedAt: serverTimestamp(),
   });
 }
+
+/**
+ * Retrieve all appointments for the administrator workspace.
+ * Firestore rules must confirm the caller has the admin role.
+ */
+export async function getAdminAppointments(): Promise<Appointment[]> {
+  const snapshot = await getDocs(collection(db, "appointments"));
+
+  return snapshot.docs
+    .map((item) => ({
+      id: item.id,
+      ...item.data(),
+    })) as Appointment[];
+}

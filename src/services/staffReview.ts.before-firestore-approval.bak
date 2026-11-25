@@ -1,0 +1,74 @@
+import {
+  collection,
+  getDocs,
+  query,
+  where,
+  type Timestamp,
+} from "firebase/firestore";
+import { getFunctions, httpsCallable } from "firebase/functions";
+
+import app, { db } from "../lib/firebase";
+
+export interface StaffApplication {
+  uid: string;
+  fullName: string;
+  email: string;
+  requestedRole: "healthWorker";
+  facility: string;
+  status: "pending" | "approved" | "rejected";
+  createdAt: Timestamp | null;
+}
+
+export type StaffApplicationDecision = "approve" | "reject";
+
+export async function getPendingStaffApplications(): Promise<
+  StaffApplication[]
+> {
+  const applicationsQuery = query(
+    collection(db, "staffApplications"),
+    where("status", "==", "pending")
+  );
+
+  const snapshot = await getDocs(applicationsQuery);
+
+  return snapshot.docs.map((applicationDoc) => {
+    const data = applicationDoc.data();
+
+    return {
+      uid: applicationDoc.id,
+      fullName: String(data.fullName ?? ""),
+      email: String(data.email ?? ""),
+      requestedRole: "healthWorker",
+      facility: String(data.facility ?? ""),
+      status: "pending",
+      createdAt: (data.createdAt as Timestamp | undefined) ?? null,
+    };
+  });
+}
+
+export async function reviewStaffApplication(
+  applicationUid: string,
+  decision: StaffApplicationDecision
+): Promise<void> {
+  const functions = getFunctions(app);
+  const reviewApplication = httpsCallable<
+    {
+      applicationUid: string;
+      decision: StaffApplicationDecision;
+    },
+    {
+      success: boolean;
+      decision: StaffApplicationDecision;
+      applicationUid: string;
+    }
+  >(functions, "reviewStaffApplication");
+
+  const result = await reviewApplication({
+    applicationUid,
+    decision,
+  });
+
+  if (!result.data.success) {
+    throw new Error("The application review could not be completed.");
+  }
+}

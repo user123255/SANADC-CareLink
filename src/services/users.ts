@@ -1,6 +1,9 @@
+
 import {
+  collection,
   doc,
   getDoc,
+  getDocs,
   serverTimestamp,
   setDoc,
   updateDoc,
@@ -16,7 +19,6 @@ import type {
 
 /**
  * Create a patient profile after Firebase Authentication registration.
- * Public registration can only create patient accounts.
  */
 export async function createPatientProfile(
   uid: string,
@@ -45,26 +47,20 @@ export async function createPatientProfile(
 export async function getUserProfile(
   uid: string
 ): Promise<UserProfile | null> {
-  const profileRef = doc(db, "users", uid);
-  const snapshot = await getDoc(profileRef);
+  const snapshot = await getDoc(doc(db, "users", uid));
 
-  if (!snapshot.exists()) {
-    return null;
-  }
+  if (!snapshot.exists()) return null;
 
   return snapshot.data() as UserProfile;
 }
 
 /**
  * Update permitted patient profile fields.
- * Role, UID and account status cannot be changed here.
  */
 export async function updatePatientProfile(
   uid: string,
   updates: PatientProfileUpdate
 ): Promise<void> {
-  const profileRef = doc(db, "users", uid);
-
   const safeUpdates: Record<string, unknown> = {
     updatedAt: serverTimestamp(),
   };
@@ -85,5 +81,67 @@ export async function updatePatientProfile(
     safeUpdates.facility = updates.facility.trim();
   }
 
-  await updateDoc(profileRef, safeUpdates);
+  await updateDoc(doc(db, "users", uid), safeUpdates);
+}
+
+/**
+ * Get all patient profiles for the administrator.
+ */
+export async function getAdminPatients(): Promise<UserProfile[]> {
+  const snapshot = await getDocs(collection(db, "users"));
+
+  return snapshot.docs
+    .map((item) => ({
+      ...item.data(),
+      uid: item.id,
+    }) as UserProfile)
+    .filter((profile) => profile.role === "patient");
+}
+
+/**
+ * Get active healthcare workers for the administrator.
+ */
+export async function getActiveHealthWorkers(): Promise<UserProfile[]> {
+  const snapshot = await getDocs(collection(db, "users"));
+
+  return snapshot.docs
+    .map((item) => ({
+      ...item.data(),
+      uid: item.id,
+    }) as UserProfile)
+    .filter(
+      (profile) =>
+        profile.role === "healthWorker" &&
+        profile.accountStatus === "active"
+    );
+}
+
+/**
+ * Assign or unassign a patient to a healthcare worker.
+ * Pass null to remove an assignment.
+ */
+export async function assignPatientToWorker(
+  patientUid: string,
+  workerUid: string | null
+): Promise<void> {
+  if (!patientUid) {
+    throw new Error("A patient must be selected.");
+  }
+
+  if (workerUid) {
+    const worker = await getUserProfile(workerUid);
+
+    if (
+      !worker ||
+      worker.role !== "healthWorker" ||
+      worker.accountStatus !== "active"
+    ) {
+      throw new Error("The selected healthcare worker is not active.");
+    }
+  }
+
+  await updateDoc(doc(db, "users", patientUid), {
+    assignedWorkerUid: workerUid,
+    updatedAt: serverTimestamp(),
+  });
 }

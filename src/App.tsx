@@ -5,10 +5,11 @@ import {
   UserRound, Menu, X, Plus, Clock, ChevronRight, ShieldCheck,
   Stethoscope, Send, Trash2, CheckCircle2, BookOpen, CalendarCheck,
   Leaf, FileText, Inbox, LockKeyhole, CircleHelp, MoreHorizontal,
-  Phone, Mail, MapPin, ArrowRight, Info, Heart, Shield,
+  Phone, Mail, MapPin, ArrowRight, Shield,
 } from "lucide-react";
-import type { Message as FirestoreMessage, Referral, UserProfile } from "./types";
+import type { Appointment as FirestoreAppointment, Message as FirestoreMessage, Referral, UserProfile } from "./types";
 import { getPatientReferrals } from "./services/referrals";
+import { createAppointment, getPatientAppointments, updateAppointmentStatus } from "./services/appointments";
 import { getOrCreatePatientConversation, sendMessage as sendFirebaseMessage, subscribeToConversationMessages } from "./services/messages";
 
 // ------------------------------------------------------
@@ -28,14 +29,7 @@ type Page =
   | "Help & Support"
   | "Settings";
 
-type Appointment = {
-  id: string;
-  title: string;
-  date: string;
-  time: string;
-  location: string;
-  status: "Upcoming" | "Completed";
-};
+type Appointment = FirestoreAppointment;
 
 type Message = {
   id: string;
@@ -72,25 +66,6 @@ const navigation: { name: Page; icon: typeof Home }[] = [
 // ------------------------------------------------------
 // INITIAL DATA
 // ------------------------------------------------------
-
-const initialAppointments: Appointment[] = [
-  {
-    id: "1",
-    title: "Antenatal Care Visit",
-    date: "2026-11-25",
-    time: "09:00",
-    location: "Kiryandongo Health Centre",
-    status: "Upcoming",
-  },
-  {
-    id: "2",
-    title: "Follow-up Visit",
-    date: "2026-12-02",
-    time: "10:30",
-    location: "Kiryandongo Health Centre",
-    status: "Upcoming",
-  },
-];
 
 const initialMessages: Message[] = [
   {
@@ -160,11 +135,29 @@ function App({ authenticatedProfile, onSignOut }: { authenticatedProfile: UserPr
   const [page, setPage] = useState<Page>("Dashboard");
   const [mobileMenu, setMobileMenu] = useState(false);
 
-  const [appointments, setAppointments] = useState<Appointment[]>(() =>
-    readStorage("sanad-appointments-v2", initialAppointments)
-  );
+  const [appointments, setAppointments] = useState<Appointment[]>([]);
+  const [appointmentsLoading, setAppointmentsLoading] = useState(true);
+  const [appointmentsError, setAppointmentsError] = useState("");
 
-  const [messages] = useState<Message[]>(() =>
+  const loadAppointments = async () => {
+    try {
+      setAppointmentsError("");
+      const records = await getPatientAppointments(authenticatedProfile.uid);
+      setAppointments(records);
+    } catch (error) {
+      console.error("Unable to load patient appointments:", error);
+      setAppointmentsError(
+        error instanceof Error ? error.message : "Unable to load appointments."
+      );
+    } finally {
+      setAppointmentsLoading(false);
+    }
+  };
+
+  useEffect(() => {
+    void loadAppointments();
+  }, [authenticatedProfile.uid]);
+const [messages] = useState<Message[]>(() =>
     readStorage("sanad-messages-v2", initialMessages)
   );
 
@@ -175,18 +168,7 @@ function App({ authenticatedProfile, onSignOut }: { authenticatedProfile: UserPr
     facility: authenticatedProfile.facility || "Kiryandongo Health Centre",
   }));
 
-  useEffect(() => {
-    try {
-      localStorage.setItem(
-        "sanad-appointments-v2",
-        JSON.stringify(appointments)
-      );
-    } catch {
-      console.warn("Unable to save appointments locally.");
-    }
-  }, [appointments]);
-
-  useEffect(() => {
+useEffect(() => {
     try {
       localStorage.setItem("sanad-messages-v2", JSON.stringify(messages));
     } catch {
@@ -201,8 +183,11 @@ function App({ authenticatedProfile, onSignOut }: { authenticatedProfile: UserPr
   };
 
   const upcoming = appointments.filter(
-  (appointment) => appointment.date >= todayString()
-);
+    (appointment) =>
+      appointment.date >= todayString() &&
+      appointment.status !== "cancelled" &&
+      appointment.status !== "completed"
+  );
 
   const today = todayString();
 
@@ -314,7 +299,11 @@ function App({ authenticatedProfile, onSignOut }: { authenticatedProfile: UserPr
               {page === "Appointments" && (
                 <AppointmentsPage
                   appointments={appointments}
-                  setAppointments={setAppointments}
+                  loading={appointmentsLoading}
+                  error={appointmentsError}
+                  patientUid={authenticatedProfile.uid}
+                  assignedWorkerUid={authenticatedProfile.assignedWorkerUid ?? null}
+                  onRefresh={loadAppointments}
                 />
               )}
 
@@ -342,14 +331,6 @@ function App({ authenticatedProfile, onSignOut }: { authenticatedProfile: UserPr
                 />
               )}
             </div>
-
-            {/* FOOTER */}
-            <footer className="mt-12 border-t border-slate-200 pt-5 text-center text-xs leading-5 text-slate-400">
-              <p>SANAD CareLink · Maternal healthcare support</p>
-              <p className="mt-1">
-                Supporting safer and more connected maternal care.
-              </p>
-            </footer>
           </div>
         </main>
       </div>
@@ -610,21 +591,6 @@ function Dashboard({
           <OverviewItem label="Upcoming" value={upcoming.length} />
         </div>
       </section>
-
-      <section className="rounded-2xl border border-[#DCEBFF] bg-[#EAF2FF] p-5">
-        <div className="flex gap-3">
-          <Heart className="mt-1 shrink-0 text-[#2563EB]" size={22} />
-          <div>
-            <h3 className="font-semibold text-[#123B73]">
-              You are not alone in your care journey.
-            </h3>
-            <p className="mt-1 text-sm leading-6 text-slate-600">
-              SANAD CareLink is designed to help you stay connected
-              with maternal healthcare support.
-            </p>
-          </div>
-        </div>
-      </section>
     </div>
   );
 }
@@ -717,47 +683,71 @@ function FormField({
 
 function AppointmentsPage({
   appointments,
-  setAppointments,
+  loading,
+  error,
+  patientUid,
+  assignedWorkerUid,
+  onRefresh,
 }: {
   appointments: Appointment[];
-  setAppointments: React.Dispatch<React.SetStateAction<Appointment[]>>;
+  loading: boolean;
+  error: string;
+  patientUid: string;
+  assignedWorkerUid: string | null;
+  onRefresh: () => Promise<void>;
 }) {
   const [showForm, setShowForm] = useState(false);
   const [title, setTitle] = useState("Antenatal Care Visit");
   const [date, setDate] = useState("");
   const [time, setTime] = useState("09:00");
   const [location, setLocation] = useState("Kiryandongo Health Centre");
+  const [saving, setSaving] = useState(false);
+  const [actionError, setActionError] = useState("");
 
-  const addAppointment = (e: React.FormEvent) => {
+  const addAppointment = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!title.trim() || !date || !time || !location.trim()) return;
 
-    const newAppointment: Appointment = {
-      id: crypto.randomUUID(),
-      title: title.trim(),
-      date,
-      time,
-      location: location.trim(),
-      status: "Upcoming",
-    };
+    try {
+      setSaving(true);
+      setActionError("");
 
-    setAppointments((previous) =>
-      [...previous, newAppointment].sort((a, b) =>
-        a.date.localeCompare(b.date)
-      )
-    );
+      await createAppointment({
+        patientUid,
+        assignedWorkerUid,
+        title: title.trim(),
+        date,
+        time,
+        location: location.trim(),
+      });
 
-    setTitle("Antenatal Care Visit");
-    setDate("");
-    setTime("09:00");
-    setLocation("Kiryandongo Health Centre");
-    setShowForm(false);
+      await onRefresh();
+      setTitle("Antenatal Care Visit");
+      setDate("");
+      setTime("09:00");
+      setLocation("Kiryandongo Health Centre");
+      setShowForm(false);
+    } catch (error) {
+      console.error("Unable to create appointment:", error);
+      setActionError(
+        error instanceof Error ? error.message : "Unable to submit appointment."
+      );
+    } finally {
+      setSaving(false);
+    }
   };
 
-  const removeAppointment = (id: string) => {
-    if (window.confirm("Cancel this appointment from the prototype?")) {
-      setAppointments((previous) =>
-        previous.filter((appointment) => appointment.id !== id)
+  const cancelAppointment = async (id: string) => {
+    if (!window.confirm("Are you sure you want to cancel this appointment?")) return;
+
+    try {
+      setActionError("");
+      await updateAppointmentStatus(id, "cancelled");
+      await onRefresh();
+    } catch (error) {
+      console.error("Unable to cancel appointment:", error);
+      setActionError(
+        error instanceof Error ? error.message : "Unable to cancel appointment."
       );
     }
   };
@@ -765,6 +755,13 @@ function AppointmentsPage({
   const sortedAppointments = appointments
     .slice()
     .sort((a, b) => a.date.localeCompare(b.date));
+
+  const statusLabel: Record<Appointment["status"], string> = {
+    pending: "Awaiting confirmation",
+    scheduled: "Confirmed",
+    completed: "Completed",
+    cancelled: "Cancelled",
+  };
 
   return (
     <div className="space-y-6">
@@ -775,63 +772,47 @@ function AppointmentsPage({
         <button
           onClick={() => setShowForm(!showForm)}
           className={primaryButtonStyle}
+          disabled={saving}
         >
           <Plus size={18} />
           New appointment
         </button>
       </div>
 
+      {(error || actionError) && (
+        <div className="rounded-xl border border-red-200 bg-red-50 p-4 text-sm text-red-700">
+          {actionError || error}
+        </div>
+      )}
+
       {showForm && (
         <form onSubmit={addAppointment} className={`${cardStyle} space-y-4`}>
-          <h3 className="font-bold">Schedule an appointment</h3>
+          <h3 className="font-bold">Request an appointment</h3>
           <div className="grid gap-4 sm:grid-cols-2">
             <FormField label="Appointment type">
-              <input
-                required
-                value={title}
-                onChange={(e) => setTitle(e.target.value)}
-                className={inputStyle}
-                placeholder="e.g. Antenatal visit"
-              />
+              <input required value={title} onChange={(e) => setTitle(e.target.value)}
+                className={inputStyle} placeholder="e.g. Antenatal visit" />
             </FormField>
             <FormField label="Facility">
-              <input
-                required
-                value={location}
-                onChange={(e) => setLocation(e.target.value)}
-                className={inputStyle}
-              />
+              <input required value={location} onChange={(e) => setLocation(e.target.value)}
+                className={inputStyle} />
             </FormField>
             <FormField label="Date">
-              <input
-                required
-                type="date"
-                min={todayString()}
-                value={date}
-                onChange={(e) => setDate(e.target.value)}
-                className={inputStyle}
-              />
+              <input required type="date" min={todayString()} value={date}
+                onChange={(e) => setDate(e.target.value)} className={inputStyle} />
             </FormField>
             <FormField label="Time">
-              <input
-                required
-                type="time"
-                value={time}
-                onChange={(e) => setTime(e.target.value)}
-                className={inputStyle}
-              />
+              <input required type="time" value={time}
+                onChange={(e) => setTime(e.target.value)} className={inputStyle} />
             </FormField>
           </div>
           <div className="flex flex-wrap gap-2">
-            <button type="submit" className={primaryButtonStyle}>
+            <button type="submit" className={primaryButtonStyle} disabled={saving}>
               <CheckCircle2 size={17} />
-              Save appointment
+              {saving ? "Submitting..." : "Submit request"}
             </button>
-            <button
-              type="button"
-              onClick={() => setShowForm(false)}
-              className="rounded-xl bg-slate-100 px-5 py-3 text-sm font-semibold text-slate-700 transition hover:bg-slate-200"
-            >
+            <button type="button" onClick={() => setShowForm(false)} disabled={saving}
+              className="rounded-xl bg-slate-100 px-5 py-3 text-sm font-semibold text-slate-700 transition hover:bg-slate-200">
               Cancel
             </button>
           </div>
@@ -839,20 +820,17 @@ function AppointmentsPage({
       )}
 
       <div className="space-y-3">
-        {sortedAppointments.length === 0 ? (
+        {loading ? (
+          <EmptyState text="Loading your appointments..." />
+        ) : sortedAppointments.length === 0 ? (
           <EmptyState text="No appointments yet. Add your first appointment above." />
         ) : (
           sortedAppointments.map((appointment) => (
-            <div
-              key={appointment.id}
-              className={`${cardStyle} flex flex-wrap items-center gap-4`}
-            >
+            <div key={appointment.id}
+              className={`${cardStyle} flex flex-wrap items-center gap-4`}>
               <div className="flex h-14 w-14 shrink-0 flex-col items-center justify-center rounded-xl bg-[#EAF2FF] text-[#2563EB]">
                 <span className="text-xs">
-                  {new Date(appointment.date + "T12:00:00").toLocaleString(
-                    "en",
-                    { month: "short" }
-                  )}
+                  {new Date(appointment.date + "T12:00:00").toLocaleString("en", { month: "short" })}
                 </span>
                 <span className="text-xl font-bold">
                   {new Date(appointment.date + "T12:00:00").getDate()}
@@ -860,55 +838,42 @@ function AppointmentsPage({
               </div>
               <div className="min-w-0 flex-1">
                 <p className="font-semibold">{appointment.title}</p>
-                <p className="mt-1 text-sm text-slate-500">
-                  {appointment.location}
-                </p>
+                <p className="mt-1 text-sm text-slate-500">{appointment.location}</p>
                 <p className="mt-1 flex items-center gap-2 text-sm text-slate-500">
                   <Clock size={14} />
                   {appointment.time}
                 </p>
                 <div className="mt-2">
-                  {appointment.date < todayString() ? (
-                    <span className="inline-flex rounded-full bg-slate-100 px-3 py-1 text-xs font-semibold text-slate-600">
-                      Passed
-                    </span>
-                  ) : (
-                    <span className="inline-flex rounded-full bg-green-100 px-3 py-1 text-xs font-semibold text-green-700">
-                      Upcoming
-                    </span>
-                  )}
+                  <span className={`inline-flex rounded-full px-3 py-1 text-xs font-semibold ${
+                    appointment.status === "scheduled"
+                      ? "bg-green-100 text-green-700"
+                      : appointment.status === "cancelled"
+                        ? "bg-red-100 text-red-700"
+                        : appointment.status === "completed"
+                          ? "bg-slate-100 text-slate-600"
+                          : "bg-amber-100 text-amber-700"
+                  }`}>
+                    {statusLabel[appointment.status]}
+                  </span>
                 </div>
               </div>
-              <button
-                onClick={() => removeAppointment(appointment.id)}
-                className="rounded-lg p-2 text-slate-400 transition hover:bg-red-50 hover:text-red-600"
-                title="Cancel appointment"
-                aria-label={`Cancel ${appointment.title}`}
-              >
-                <Trash2 size={18} />
-              </button>
+              {appointment.status !== "cancelled" && appointment.status !== "completed" && (
+                <button onClick={() => void cancelAppointment(appointment.id)}
+                  className="rounded-lg p-2 text-slate-400 transition hover:bg-red-50 hover:text-red-600"
+                  title="Cancel appointment" aria-label={`Cancel ${appointment.title}`}>
+                  <Trash2 size={18} />
+                </button>
+              )}
             </div>
           ))
         )}
       </div>
 
-      <div className="rounded-2xl bg-[#EAF2FF] p-5 text-sm leading-6 text-[#123B73]">
-        <Info size={20} className="mb-2" />
-        <p className="font-semibold">Appointment information</p>
-        <p className="mt-1">
-          This prototype helps you keep track of planned visits. Please
-          confirm appointment dates and times directly with your healthcare
-          facility.
-        </p>
-      </div>
     </div>
   );
 }
 
 // ------------------------------------------------------
-// REMINDERS
-// ------------------------------------------------------
-
 function RemindersPage({ appointments }: { appointments: Appointment[] }) {
   return (
     <div className="space-y-6">
@@ -939,13 +904,6 @@ function RemindersPage({ appointments }: { appointments: Appointment[] }) {
             ))}
           </div>
         )}
-      </div>
-      <div className="rounded-2xl bg-[#DCEBFF] p-5 text-sm leading-6 text-[#123B73]">
-        <Bell size={20} className="mb-2" />
-        <p className="font-semibold">Reminder feature preview</p>
-        <p className="mt-1">
-          This prototype displays reminders inside the app.
-        </p>
       </div>
     </div>
   );
@@ -1064,14 +1022,6 @@ function MessagesPage({
 
   return (
     <div className="space-y-5">
-      <div>
-        <h2 className="text-xl font-bold text-slate-800">
-          Messages
-        </h2>
-        <p className="mt-1 text-sm text-slate-500">
-          Communicate privately with your assigned healthcare worker.
-        </p>
-      </div>
 
       {!assignedWorkerUid ? (
         <div className="rounded-2xl border border-amber-200 bg-amber-50 p-5">
@@ -1611,14 +1561,6 @@ function PrivacyPage() {
         </div>
       </div>
 
-      <div className="rounded-2xl border border-amber-200 bg-amber-50 p-5 text-sm leading-6 text-amber-900">
-        <Info size={21} className="mb-2" />
-        <p className="mt-1">
-          This screen explains intended privacy principles. It is not a
-          complete legal privacy policy or proof that this prototype has
-          been independently security-certified.
-        </p>
-      </div>
     </div>
   );
 }
@@ -1811,6 +1753,15 @@ function SettingsPage({
 
 
 export default App;
+
+
+
+
+
+
+
+
+
 
 
 
