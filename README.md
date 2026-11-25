@@ -1,21 +1,22 @@
+
 # SANAD CareLink
-### Digital Maternal Healthcare Support Platform
+ Digital Maternal Healthcare Support Platform
 
 SANAD CareLink is a digital maternal healthcare support platform designed to strengthen access to continuous, respectful, and confidential maternal healthcare services in underserved and hard-to-reach communities.
 
 The project is initially focused on **Kiryandongo Refugee Settlement, Uganda**, where geographical barriers, limited healthcare resources, transportation challenges, and gaps in follow-up care can make it difficult for pregnant women to receive consistent support.
 
-SANAD means *support or backing*. The platform aims to strengthen the connection between mothers and healthcare workers while helping health facilities coordinate maternal healthcare services.
+SANAD means *support or backing* in Arabic. The platform aims to strengthen the connection between mothers and healthcare workers while helping health facilities coordinate maternal healthcare services.
 
 ---
 
-## 1. Project Overview
+# 1. Project Overview
 
-SANAD CareLink is being developed as a role-based healthcare platform connecting:
+SANAD CareLink is a role-based healthcare platform connecting:
 
-- **Patients:** Access their maternal healthcare information, appointments, reminders, and healthcare support.
-- **Healthcare workers:** Manage assigned patients, view appointments, and coordinate follow-up care.
-- **Administrators:** Oversee the platform, manage staff applications, and coordinate patient assignments through authorized administrative processes.
+- **Patients:** Access their maternal healthcare information, appointments, and available healthcare support.
+- **Healthcare workers:** Access authorised patient information, manage appointments, and coordinate healthcare activities.
+- **Administrators:** Oversee platform operations, review staff applications, and manage authorised user activities.
 
 The platform is intended to complement existing healthcare services, not replace healthcare professionals, antenatal care visits, emergency services, medical diagnosis, or treatment.
 
@@ -34,77 +35,82 @@ These challenges can affect the continuity of maternal healthcare.
 
 SANAD CareLink aims to address some of these challenges through accessible digital communication, appointment coordination, and improved healthcare follow-up.
 
-## 3. Project Objectives
+ 3. Project Objectives
 
 1. Improve communication between pregnant women and healthcare workers.
 2. Support appointment scheduling and follow-up coordination.
-3. Help healthcare workers manage their assigned patients.
+3. Help healthcare workers manage authorised patient-related activities.
 4. Strengthen continuity of maternal healthcare support.
 5. Promote privacy, confidentiality, and responsible handling of sensitive information.
 6. Support healthcare facilities with better coordination of maternal healthcare activities.
 
-## 4. Key Features
+# 4. Key Features
 
-### Patient Dashboard
+## Patient Dashboard
+
 - Patient account registration and authentication.
-- Personal profile management.
+- Patient profile access and management.
 - Maternal healthcare appointment requests.
 - Appointment tracking.
-- Access to approved maternal health information.
-- Communication with assigned healthcare workers as the messaging functionality is completed.
+- Access to available maternal health information.
+- Messaging and communication features.
 
-### Healthcare Worker Dashboard
+## Healthcare Worker Dashboard
+
 - Healthcare worker account access following verification.
-- Overview of assigned patients.
-- Assigned appointment management.
-- Appointment scheduling and completion actions.
-- A foundation for patient follow-up and communication workflows.
+- Access to authorised patient information.
+- Appointment management.
+- Patient communication features.
+- Referral and follow-up coordination features.
 
-### Administrator Dashboard
-Planned administrative capabilities include:
+## Administrator Dashboard
+
+Administrative capabilities include:
 
 - Reviewing healthcare worker applications.
-- Approving or rejecting staff applications.
-- Assigning patients to healthcare workers.
-- Managing authorized user accounts.
-- Monitoring platform activity.
-- Supporting responsible facility-level coordination.
+- Approving or rejecting staff applications through the available review workflow.
+- Managing authorised user accounts and roles.
+- Supporting patient and healthcare worker coordination.
+- Administrative oversight of platform activities.
 
-Administrative functions will be implemented through trusted backend services with appropriate access controls.
+The availability of individual administrative workflows depends on their implementation and testing.
 
-### Additional Platform Services
+## Additional Platform Services
+
 The project includes service modules for:
 
 - Appointments.
 - Patient and healthcare worker profiles.
 - Conversations and messages.
 - Referrals.
-- Reminders.
-- Maternal health educational content.
+- Healthcare information.
 - Consent records.
 - Audit logs.
-- Staff applications.
+- Staff applications and review.
 
-Some modules are still being integrated and tested.
+Some modules and workflows continue to be integrated and tested.
 
 ## 5. Technology Stack
 
 | Technology | Purpose |
 |---|---|
-| React | User interface |
+| React 19 | User interface |
 | TypeScript | Application development and type safety |
-| Vite | Development server and production builds |
+| Vite 8 | Development server and production builds |
 | Tailwind CSS v4 | Responsive styling |
 | Firebase Authentication | User authentication |
 | Cloud Firestore | Database and application data |
 | Firebase Security Rules | Database access control |
+| React Router | Application navigation |
 | Lucide React | Interface icons |
-| Firebase CLI | Firebase project management |
+| Oxlint | Code linting |
+| Firebase CLI | Firebase project management and deployment |
 
 **Development environment**
 
-- Node.js 24 or a compatible supported version.
+- Node.js 22.12 or a newer supported version.
 - npm.
+- Git.
 - Firebase CLI.
 - Visual Studio Code or another code editor.
 - A Firebase project.
@@ -120,6 +126,8 @@ SANADC-CareLink/
 │
 ├── src/
 │   ├── components/
+│   │   ├── AdminDashboard.tsx
+│   │   ├── AdminWorkspaces.tsx
 │   │   ├── AuthScreen.tsx
 │   │   └── HealthWorkerDashboard.tsx
 │   │
@@ -128,15 +136,10 @@ SANADC-CareLink/
 │   │
 │   ├── services/
 │   │   ├── appointments.ts
-│   │   ├── auditLogs.ts
-│   │   ├── consents.ts
-│   │   ├── conversations.ts
 │   │   ├── healthContent.ts
 │   │   ├── messages.ts
 │   │   ├── referrals.ts
-│   │   ├── reminders.ts
-│   │   ├── staff.ts
-│   │   ├── staffApplications.ts
+│   │   ├── staffReview.ts
 │   │   └── users.ts
 │   │
 │   ├── types/
@@ -146,7 +149,8 @@ SANADC-CareLink/
 │   ├── index.css
 │   └── main.tsx
 │
-├── firestore.rules
+├── functions/
+├── firestore. rules
 ├── firebase.json
 ├── package.json
 ├── package-lock.json
@@ -164,10 +168,12 @@ Follow these steps to set up SANAD CareLink locally.
 
 Install:
 
-1. Node.js and npm.
-2. Git.
-3. Firebase CLI.
-4. A code editor such as Visual Studio Code.
+1. Node.js 22.12 or a newer supported version.
+2. npm.
+3. Git.
+4. Firebase CLI.
+5. A code editor such as Visual Studio Code.
+6. A Firebase project.
 
 Verify the installations:
 
@@ -181,7 +187,7 @@ firebase --version
 ### Step 1: Clone the repository
 
 ```bash
-git clone https://github.com/YOUR-GITHUB-USERNAME/SANADC-CareLink.git
+git clone https://github.com/user123255/SANADC-CareLink.git
 ```
 
 Navigate into the project:
@@ -190,9 +196,7 @@ Navigate into the project:
 cd SANADC-CareLink
 ```
 
-Replace the repository URL with the actual public GitHub repository address.
-
-### Step 2: Install dependencies
+## Step 2: Install dependencies
 
 ```bash
 npm install
@@ -225,31 +229,44 @@ VITE_FIREBASE_MESSAGING_SENDER_ID=your_sender_id
 VITE_FIREBASE_APP_ID=your_app_id
 ```
 
-**Important:** These variable names are examples. Check `src/lib/firebase.ts` and use the exact environment variable names expected by the application.
+Replace the example values with the configuration values from your Firebase project.
 
-Never commit `.env.local` or private credentials to GitHub.
+These variable names match the Firebase configuration currently used in `src/lib/firebase.ts`.
 
-Firebase web configuration values identify your Firebase project but do not replace proper security rules. Access to sensitive data must be protected through Firebase Authentication, Firestore Security Rules, and trusted backend authorization.
+**Important:** Never commit `.env.local` or private credentials to GitHub.
 
-### Step 4: Configure Firestore
+Firebase web configuration values identify your Firebase project but do not replace proper security rules. Access to sensitive data must be protected through Firebase Authentication, Firestore Security Rules, and trusted backend authorisation.
+
+## Step 4: Configure Firestore
 
 In the Firebase Console:
 
 1. Open Firestore Database.
 2. Create the database for your Firebase project.
-3. Configure the required collections and indexes.
-4. Review the project's `firestore.rules`.
-5. Deploy the rules only after testing them.
+3. Review the project's `firestore.rules`.
+4. Configure any additional collections and indexes required by the application.
+5. Test the security rules before deploying them.
+
+Install and authenticate Firebase CLI:
+
+```bash
+npm install -g firebase-tools
+firebase login
+```
+
+Select the Firebase project:
+
+```bash
+firebase use YOUR_FIREBASE_PROJECT_ID
+```
 
 To deploy the Firestore rules:
 
 ```bash
-firebase login
-firebase use YOUR_FIREBASE_PROJECT_ID
-firebase deploy --only firestore:rules
+firebase deploy --only firestore: rules
 ```
 
-Replace `YOUR_FIREBASE_PROJECT_ID` with the actual Firebase project ID.
+Replace `YOUR_FIREBASE_PROJECT_ID` with your actual Firebase project ID.
 
 ### Step 5: Start the development server
 
@@ -286,6 +303,8 @@ npm run preview
 | `npm run lint` | Run Oxlint |
 | `npx tsc --noEmit` | Check TypeScript without generating output |
 
+You can find the live application at this link: [https://sanad-carelink.web.app](url)
+
 ## 9. User Roles and Access Control
 
 SANAD CareLink uses three primary account roles:
@@ -293,12 +312,12 @@ SANAD CareLink uses three primary account roles:
 | Role | Access |
 |---|---|
 | Patient | Patient-facing services and personal records |
-| Healthcare worker | Authorized assigned-patient information and care coordination |
-| Administrator | Authorized administrative operations |
+| Healthcare worker | Authorised patient-related information and healthcare coordination |
+| Administrator | Authorised administrative operations |
 
 Selecting a staff role during registration submits an application. It does not automatically grant administrative or healthcare worker privileges.
 
-Staff access must be verified and provisioned through trusted administrative processes.
+Staff access must be verified and provisioned through the application's authorised processes.
 
 Security principles include:
 
@@ -306,7 +325,7 @@ Security principles include:
 - Authentication before access to protected records.
 - Restricted access to patient information.
 - Separation of patient and staff permissions.
-- Protection against unauthorized role changes.
+- Protection against unauthorised role changes.
 - Consent and accountability mechanisms.
 
 ## 10. Privacy and Data Protection
@@ -316,10 +335,10 @@ SANAD CareLink is designed to handle sensitive maternal healthcare information r
 The project follows these principles:
 
 - Collect only information needed for the platform's intended functions.
-- Restrict patient records to authorized users.
+- Restrict patient records to authorised users.
 - Protect patient-to-worker communication.
 - Avoid exposing sensitive medical information unnecessarily.
-- Use secure authentication and database rules.
+- Use authentication and database security rules.
 - Maintain appropriate consent and audit mechanisms.
 
 The platform is not a diagnostic system and does not provide medical prescriptions or independently change treatment plans.
@@ -334,16 +353,17 @@ The project is being developed incrementally.
 | Firebase project integration | Implemented |
 | Patient authentication and registration | Implemented |
 | Staff application registration | Implemented |
-| Patient dashboard | Existing application |
-| Healthcare worker dashboard | Initial implementation |
-| Administrator dashboard | In development |
-| Secure staff approval backend | Planned |
-| Secure patient assignment | Planned |
-| Complete patient-worker messaging workflow | In development |
-| End-to-end security testing | Pending |
-| Deployment and production testing | Pending |
+| Patient dashboard | Implemented |
+| Healthcare worker dashboard | Implemented |
+| Administrator dashboard | Implemented |
+| Appointment management | Implemented / testing |
+| Staff application review | Implemented / testing |
+| Patient-worker messaging | In development |
+| Referral workflows | In development |
+| End-to-end security testing | Ongoing |
+| Production deployment testing | Ongoing |
 
-Features will be marked complete only after implementation and appropriate testing.
+Features should be considered complete only after implementation and appropriate testing.
 
 ## 12. GitHub Contribution and Development Practices
 
@@ -353,7 +373,7 @@ The project uses Git and GitHub to track changes and support collaborative devel
 
 Recommended workflow:
 
-### Create a feature branch
+## Create a feature branch
 
 ```bash
 git checkout -b feature/health-worker-dashboard
@@ -368,7 +388,7 @@ npm run build
 ### Commit the work
 
 ```bash
-git add .
+git add.
 git commit -m "feat: build healthcare worker dashboard"
 ```
 
@@ -384,7 +404,7 @@ Open GitHub and create a pull request from the feature branch into `main`.
 
 After reviewing and testing the changes, merge the pull request into the main branch.
 
-### Suggested commit conventions
+## Suggested commit conventions
 
 - `feat:` New functionality.
 - `fix:` Bug fixes.
@@ -402,11 +422,11 @@ Contributors should make meaningful commits as work progresses, use feature bran
 
 Planned improvements include:
 
-- Secure administrator dashboard.
-- Verified healthcare worker onboarding.
-- Secure patient assignment workflows.
-- Real-time patient-worker messaging.
-- Improved appointment and follow-up coordination.
+- Further strengthening administrator workflows.
+- Improving verified healthcare worker onboarding.
+- Expanding secure patient assignment workflows.
+- Completing patient-worker messaging workflows.
+- Improving appointment and follow-up coordination.
 - Low-connectivity and basic-phone access considerations.
 - Language support validated with the local community.
 - Accessibility and usability improvements.
@@ -424,10 +444,9 @@ SANAD CareLink is being developed as a social-impact technology initiative to st
 
 ## 15. License
 
-A license should be selected and added before public distribution.
+SANAD CareLink is currently shared publicly for project demonstration and educational purposes.
 
-Until a license is included, the repository's public visibility does not automatically grant permission to reuse, modify, or redistribute its code.
-
+No open-source license has been applied. All rights to the source code remain with the project owner. Permission is required before copying, modifying, or redistributing the code.
 ---
 
 **SANAD CareLink — Supporting mothers. Connecting care. Strengthening communities.**
